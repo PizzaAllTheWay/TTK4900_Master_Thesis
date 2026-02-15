@@ -1,0 +1,263 @@
+\subsection{Rigid Body Kinematics}
+\subsubsection{Relevance for Navigation and Modeling}
+Rigid body kinematics provides the mathematical foundation for expressing motion, orientation, and acceleration consistently across coordinate frames. In navigation systems, these relationships allow the integration of measurements from inertial sensors, GNSS, and other sources within a unified dynamic model.  
+\\ \\
+The transformation equations for position, velocity, and acceleration ensure that sensor data expressed in the body frame can be accurately related to the navigation frame, enabling correct estimation of the vehicles state. This consistency is essential for inertial navigation, attitude estimation, and sensor fusion, where body fixed measurements such as angular velocity and specific force must be mapped into global coordinates for integration and correction.  
+\\ \\
+Moreover, the rigid body framework is fundamental for simulation and control system design. It allows modeling of vehicle dynamics, actuator response, and sensor placement with precise spatial relationships. The kinematic expressions derived in this section thus serve as the basis for dynamic modeling, state estimation, and motion prediction used in autonomous and navigation systems.
+
+
+
+\subsubsection{Position and Orientation}
+The position of a rigid body is represented by the vector $\mathbf{p}_{b/O}^{n}$, which denotes the location of the body frame origin expressed in the navigation (NED) frame. The orientation of the body is represented by the rotation matrix $R_b^n \in \mathrm{SO}(3)$, which maps a vector from the body frame $\{b\}$ to the navigation frame $\{n\}$.  
+\\ \\
+The combined rigid body pose is described by the homogeneous transformation matrix $T_{b/O}^{n} \in \mathrm{SE}(3)$:
+$$
+    T_{b/O}^{n} =
+    \begin{bmatrix}
+        R_b^n & \mathbf{p}_{b/O}^{n} \\
+        0 & 1
+    \end{bmatrix}
+$$
+The kinematic relationship between the time derivative of position and the linear velocity is then given by
+$$
+    \dot{\mathbf{p}}_{b/O}^{n} = \mathbf{v}_{b/O}^{n}
+$$
+where $\mathbf{v}_{b/O}^{n}$ is the velocity of the body origin expressed in the navigation frame.  
+
+
+
+\subsubsection{Angular Velocity and Euler Angle Relationship}
+The angular velocity vector $\boldsymbol{\omega}_{b/O}^{b} = [p, q, r]^\top$ represents the instantaneous rotation rate of the body about its own axes, roll rate $p$ about the $x_b$-axis (North), pitch rate $q$ about the $y_b$-axis (East), and yaw rate $r$ about the $z_b$-axis (Down).  
+\\ \\
+When the body orientation is represented by ZYX Euler angles (yaw $\psi$, pitch $\theta$, roll $\phi$), the time derivative of the Euler angles relates to the body angular velocity through
+$$
+    \begin{bmatrix}
+        \dot{\phi} \\ \dot{\theta} \\ \dot{\psi}
+    \end{bmatrix}
+    = T(\phi, \theta)\boldsymbol{\omega}_{b/O}^{b}
+$$
+where the transformation matrix $T(\phi, \theta)$ for the NED convention is defined as
+$$
+    T(\phi, \theta) =
+    \begin{bmatrix}
+        1 & \sin\phi\tan\theta & \cos\phi\tan\theta \\
+        0 & \cos\phi & -\sin\phi \\
+        0 & \sin\phi/\cos\theta & \cos\phi/\cos\theta
+    \end{bmatrix}
+$$
+This maps the body angular velocity to the Euler angle rates according to the NED convention.  
+\\ \\
+The inverse relationship, expressing body angular velocity from Euler angle derivatives, is given by
+$$
+    \boldsymbol{\omega}_{b/O}^{b} =
+    \begin{bmatrix}
+        p \\ q \\ r
+    \end{bmatrix}
+    = T^{-1}(\phi, \theta)
+    \begin{bmatrix}
+        \dot{\phi} \\ \dot{\theta} \\ \dot{\psi}
+    \end{bmatrix}
+$$
+where
+$$
+    T^{-1}(\phi, \theta) =
+    \begin{bmatrix}
+        1 & 0 & -\sin\theta \\
+        0 & \cos\phi & \sin\phi\cos\theta \\
+        0 & -\sin\phi & \cos\phi\cos\theta
+    \end{bmatrix}
+$$
+This formulation aligns with the NED coordinate convention and ensures correct mapping between angular velocities and Euler angle derivatives. The transformation matrix becomes singular at $\theta = \pm 90^\circ$, corresponding to gimbal lock, where $\tan\theta$ diverges.  
+
+
+
+\subsubsection{Angular Velocity and Quaternion Relationship}
+Quaternions provide a compact and singularity free representation of rotation. A unit quaternion $q = [q_0, q_1, q_2, q_3]^\top$ consists of one scalar and three vector components, often written as
+$$
+    q = 
+    \begin{bmatrix}
+        q_0 \\ \mathbf{q}_v
+    \end{bmatrix}
+    =
+    \begin{bmatrix}
+        q_0 \\ q_1 \\ q_2 \\ q_3
+    \end{bmatrix}
+$$
+where $q_0$ is the scalar part and $\mathbf{q}_v = [q_1, q_2, q_3]^\top$ is the vector part.  
+The quaternion represents a rotation of angle $\theta$ around the unit axis $\hat{\mathbf{u}}$:
+$$
+    q =
+    \begin{bmatrix}
+        \cos\frac{\theta}{2} \\ \hat{\mathbf{u}}\sin\frac{\theta}{2}
+    \end{bmatrix}
+$$
+The time evolution of the quaternion is governed by the angular velocity vector $\boldsymbol{\omega}_{b/O}^{b} = [p, q, r]^\top$ measured in the body frame. The quaternion kinematics are given by
+$$
+    \dot{q} = \frac{1}{2}\Omega(\boldsymbol{\omega}_{b/O}^{b}) q
+$$
+where $\Omega(\boldsymbol{\omega}_{b/O}^{b})$ is the quaternion rate matrix:
+$$
+    \Omega(\boldsymbol{\omega}_{b/O}^{b}) =
+    \begin{bmatrix}
+        0 & -p & -q & -r \\
+        p & 0 & r & -q \\
+        q & -r & 0 & p \\
+        r & q & -p & 0
+    \end{bmatrix}
+$$
+Given the quaternion $q = [q_0, \mathbf{q}_v]^\top$ and its time derivative $\dot{q} = [\dot{q_0}, \dot{\mathbf{q}_v}]^\top$, the body angular velocity can be reconstructed directly as
+$$
+    \boldsymbol{\omega}_{b/O}^{b} = 2 \big( q_0\dot{\mathbf{q}_v} - \dot{q_0}\mathbf{\mathbf{q}_v} - \mathbf{\mathbf{q}_v}^{\times}\dot{\mathbf{q}_v} \big).
+$$
+Here, $q_0$ is the scalar part of the quaternion and $\mathbf{q}*v$ its vector part. This relation provides a direct and numerically stable way to compute the instantaneous angular velocity from quaternion derivatives while maintaining full consistency with rigid body rotational kinematics in the body frame. This formulation complements the quaternion rate equation which integrates angular velocity to update attitude over time. The quaternion must remain normalized, i.e. $|q| = 1$, to represent a valid rotation, and is therefore periodically renormalized during numerical integration as
+$$
+q = \frac{q}{|q|}.
+$$
+The corresponding rotation matrix from body to navigation frame is obtained as
+$$
+    R_b^n(q) =
+    \begin{bmatrix}
+        1 - 2(q_2^2 + q_3^2) & 2(q_1 q_2 - q_0 q_3) & 2(q_1 q_3 + q_0 q_2) \\
+        2(q_1 q_2 + q_0 q_3) & 1 - 2(q_1^2 + q_3^2) & 2(q_2 q_3 - q_0 q_1) \\
+        2(q_1 q_3 - q_0 q_2) & 2(q_2 q_3 + q_0 q_1) & 1 - 2(q_1^2 + q_2^2)
+    \end{bmatrix}
+$$
+This rotation matrix provides the mapping between the body and navigation frames, analogous to $R_b^n$ obtained from Euler angles, but without the gimbal lock problem.  
+\\ \\
+In practice, quaternion based orientation integration using $\dot{q} = \frac{1}{2}\Omega(\boldsymbol{\omega}_{b/O}^{b})q$ is preferred for real-time attitude propagation, while the equivalent rotation matrix or Euler angles are extracted only when needed for visualization or control.
+
+
+
+\subsubsection{Linear Velocity Relationship}
+The linear velocity of any point $P$ fixed on a rigid body can be related to the velocity of a reference point $O$ on the same body as
+$$
+    \mathbf{v}_{P/O}^{b} = \mathbf{v}_{b/O}^{b} + \mathbf{v}_{P/b}^{b} + \boldsymbol{\omega}_{b/O}^{b} \times \mathbf{p}_{P/b}^{b}
+$$
+Here, $\mathbf{v}_{b/O}^{b}$ is the translational velocity of the body origin expressed in the body frame, $\mathbf{v}_{P/b}^{b}$ is the velocity of point $P$ relative to the body (zero for fixed sensors), $\boldsymbol{\omega}_{b/O}^{b}$ is the body angular velocity, and $\mathbf{p}_{P/b}^{b}$ is the position of $P$ relative to the body origin, both expressed in the body frame.
+\\ \\
+The cross product term $\boldsymbol{\omega}_{b/O}^{b} \times \mathbf{p}_{P/b}^{b}$ represents the additional linear velocity experienced by point $P$ due to the rotational motion of the body. This term becomes more significant for points located farther away from the rotation axis, such as antennas or sensors mounted away from the vessels center of gravity.
+\\ \\
+In many applications, it is necessary to express all velocities in a common reference frame. The velocity of the body origin expressed in the navigation (NED) frame is obtained by rotating the body frame velocity using the rotation matrix $R_b^n$:
+$$
+    \mathbf{v}_{b/O}^{n} = R_b^n \mathbf{v}_{b/O}^{b}.
+$$
+Conversely, the body frame velocity can be obtained from the navigation frame velocity by
+$$
+    \mathbf{v}_{b/O}^{b} = (R_b^n)^\top \mathbf{v}_{b/O}^{n},
+$$
+since $(R_b^n)^\top = R_n^b$. The rotation matrix $R_b^n$ is derived from the vehicles orientation, represented either by Euler angles or a unit quaternion.
+\\ \\
+Similarly, for a sensor or point $P$ rigidly fixed to the vehicle (i.e., $\mathbf{v}_{P/b}^{b} = 0$), the velocity expressed in the navigation frame simplifies to
+$$
+ \mathbf{v}_{P/O}^{n} = R_b^n \left(\mathbf{v}_{b/O}^{b} + \boldsymbol{\omega}_{b/O}^{b} \times \mathbf{p}_{P/b}^{b}\right),
+$$
+where $\mathbf{p}_{P/b}^{b}$ defines the sensors position in the body frame. This formulation provides a consistent way to compute the motion of any fixed point on the vehicle in both body and navigation frames, ensuring proper alignment between inertial and navigation states.
+
+
+
+\subsubsection{Angular Acceleration in Euler Representation}
+The angular acceleration $\boldsymbol{\alpha}_{b/O}^{b}$ describes the rate of change of the body's angular velocity vector $\boldsymbol{\omega}_{b/O}^{b} = [p, q, r]^\top$, which represents the instantaneous rotation of the body about its own $x$, $y$, and $z$ axes. Physically, $\boldsymbol{\alpha}_{b/O}^{b}$ captures how fast the rotational motion itself is changing, and it directly relates to the torques acting on the body through the rotational dynamics equations.  
+\\ \\
+When the body orientation is represented using Euler angles $(\phi, \theta, \psi)$, the angular acceleration can be obtained by differentiating the Euler angle to angular velocity relationship:
+$$
+    \boldsymbol{\alpha}_{b/O}^{b} = T^{-1}(\phi, \theta, \psi)\ddot{\boldsymbol{\Theta}} + \dot{T}^{-1}(\phi, \theta, \psi)\dot{\boldsymbol{\Theta}}
+$$
+where $\dot{\boldsymbol{\Theta}} = [\dot{\phi}, \dot{\theta}, \dot{\psi}]^\top$ and $\ddot{\boldsymbol{\Theta}} = [\ddot{\phi}, \ddot{\theta}, \ddot{\psi}]^\top$ are the first and second derivatives of the Euler angles. The first term represents the direct contribution from angular rate changes, while the second term captures coupling effects caused by the nonlinearity of rotational kinematics, for instance, when pitch or roll rates influence yaw acceleration.  
+\\ \\
+In differential form, the time derivative of angular velocity is expressed as
+$$
+    \dot{\boldsymbol{\omega}}_{b/O}^{b} = \boldsymbol{\alpha}_{b/O}^{b}
+$$
+which defines angular acceleration in the same frame as $\boldsymbol{\omega}_{b/O}^{b}$. To express angular acceleration in another reference frame, such as the navigation frame, it can be transformed using the rotation matrix:
+$$
+    \boldsymbol{\alpha}_{b/O}^{n} = R_b^n \boldsymbol{\alpha}_{b/O}^{b}
+$$
+where $R_b^n$ is the rotation from the body frame to the navigation (NED) frame.  
+\\ \\
+In practical navigation and control systems, the angular acceleration $\boldsymbol{\alpha}_{b/O}^{b}$ is rarely measured directly. It is usually approximated by differentiating the body angular velocity $\boldsymbol{\omega}_{b/O}^{b}$ obtained from gyroscopes or inferred from rigid body dynamics. Maintaining consistent frame alignment between body and navigation frames is essential for accurate attitude propagation and torque computation.
+
+
+
+\subsubsection{Angular Acceleration in Quaternion Representation}
+The quaternion representation provides a singularity free alternative to Euler angles for describing rotational motion. The unit quaternion $q = [q_0, q_1, q_2, q_3]^\top$ defines the orientation of the body frame relative to the navigation frame, where $q_0$ is the scalar part and $[q_1, q_2, q_3]^\top$ is the vector part.  
+\\ \\
+The time evolution of the quaternion is governed by the rotational kinematics equation:
+$$
+    \dot{q} = \frac{1}{2}\Omega(\boldsymbol{\omega}_{b/O}^{b})q
+$$
+where $\boldsymbol{\omega}_{b/O}^{b} = [p, q, r]^\top$ is the angular velocity in the body frame and $\Omega(\boldsymbol{\omega}_{b/O}^{b})$ is the quaternion rate matrix:
+$$
+    \Omega(\boldsymbol{\omega}_{b/O}^{b}) =
+    \begin{bmatrix}
+        0 & -p & -q & -r \\
+        p &  0 &  r & -q \\
+        q & -r &  0 &  p \\
+        r &  q & -p &  0
+    \end{bmatrix}
+$$
+Differentiating this expression gives the quaternion based angular acceleration:
+$$
+    \ddot{q} = \frac{1}{2}\Omega(\boldsymbol{\alpha}_{b/O}^{b})q + \frac{1}{2}\Omega(\boldsymbol{\omega}_{b/O}^{b})\dot{q}
+$$
+which captures both the direct contribution of angular acceleration $\boldsymbol{\alpha}_{b/O}^{b}$ and the coupling effect from the current angular velocity.  
+\\ \\
+In vector form, the time derivative of angular velocity is expressed as
+$$
+    \dot{\boldsymbol{\omega}}_{b/O}^{b} = \boldsymbol{\alpha}_{b/O}^{b}
+$$
+which defines angular acceleration in the same frame as $\boldsymbol{\omega}^b$. To express angular acceleration in another reference frame, such as the navigation frame, it can be transformed using the rotation matrix:
+$$
+    \boldsymbol{\alpha}_{b/O}^{n} = R_b^n \boldsymbol{\alpha}_{b/O}^{b}
+$$
+where $R_b^n$ is the rotation matrix from body to navigation frame.
+\\ \\
+To ensure $q$ remains a valid rotation, it must satisfy the unit norm constraint:
+$$
+    \|q\| = 1
+$$
+which is typically enforced by periodic normalization during numerical integration like so:
+$$
+    q = \frac{q}{\|q\|}
+$$  
+This quaternion based formulation is computationally efficient and avoids the gimbal lock issue inherent in Euler angle representations. For this reason, quaternion propagation is widely preferred for representing orientation and modeling angular dynamics in navigation and control systems.
+
+
+
+\subsubsection{Linear Acceleration}
+The linear acceleration of a point $P$ on a rigid body consists of translational, tangential, centripetal, and Coriolis components. It is expressed in the body frame as
+$$
+    \mathbf{a}_{P/O}^{b} =
+    \mathbf{a}_{b/O}^{b}
+    + \mathbf{a}_{P/b}^{b}
+    + \boldsymbol{\alpha}_{b/O}^{b} \times \mathbf{p}_{P/b}^{b}
+    + \boldsymbol{\omega}_{b/O}^{b} \times (\boldsymbol{\omega}_{b/O}^{b} \times \mathbf{p}_{P/b}^{b})
+    + 2\boldsymbol{\omega}_{b/O}^{b} \times \mathbf{v}_{P/b}^{b}
+$$
+Here, $\mathbf{a}_{b/O}^{b}$ is the translational acceleration of the body origin, $\mathbf{a}_{P/b}^{b}$ is acceleration of point $P$ on sensor relative to body, $\boldsymbol{\alpha}_{b/O}^{b}$ is the angular acceleration, $\boldsymbol{\omega}_{b/O}^{b}$ is the angular velocity, $\mathbf{p}_{P/b}^{b}$ is the position of point $P$ relative to the body origin, and $\mathbf{v}_{P/b}^{b}$ is the velocity of $P$ relative to the body frame.  
+\\ \\
+Each term represents a specific physical contribution to the total acceleration. The first term $\mathbf{a}_{b/O}^{b}$ describes the translational acceleration of the body origin. Second term $\mathbf{a}_{P/b}^{b}$ denotes the local acceleration of $P$ relative to the body frame, which becomes zero for fixed sensors, while $\boldsymbol{\alpha}_{b/O}^{b} \times \mathbf{p}_{P/b}^{b}$ represents the tangential acceleration caused by changes in rotational rate. The term $\boldsymbol{\omega}_{b/O}^{b} \times (\boldsymbol{\omega}_{b/O}^{b} \times \mathbf{p}_{P/b}^{b})$ accounts for the centripetal acceleration directed toward the axis of rotation, and $2\boldsymbol{\omega}_{b/O}^{b} \times \mathbf{v}_{P/b}^{b}$ captures the Coriolis acceleration arising from relative motion within the rotating body.
+\\ \\
+For a sensor rigidly mounted on the body, where $\mathbf{v}_{P/b}^{b} = 0$ and $\mathbf{a}_{P/b}^{b} = 0$, the equation simplifies to  
+$$
+    \mathbf{a}_{P/O}^{b} =
+    \mathbf{a}_{b/O}^{b}
+    + \boldsymbol{\alpha}_{b/O}^{b} \times \mathbf{p}_{P/b}^{b}
+    + \boldsymbol{\omega}_{b/O}^{b} \times (\boldsymbol{\omega}_{b/O}^{b} \times \mathbf{p}_{P/b}^{b})
+$$
+This formulation is widely used to compute the acceleration at sensor locations such as IMUs or GNSS antennas mounted away from the vehicles center of mass.  
+\\ \\
+To express the acceleration in the navigation (NED) frame, the transformation is performed using the rotation matrix $R_b^n$:  
+$$
+    \mathbf{a}_{P/O}^{n} = R_b^n \mathbf{a}_{P/O}^{b}
+$$
+and conversely,  
+$$
+    \mathbf{a}_{P/O}^{b} = (R_b^n)^\top \mathbf{a}_{P/O}^{n}
+$$
+\\ \\
+In inertial navigation systems, accelerometers measure the specific force, which is the total acceleration excluding gravity:  
+$$
+    \mathbf{f}^b = \mathbf{a}_{b/O}^{b} - R_n^b \mathbf{g}^n
+$$
+where $\mathbf{g}^n = [0, 0, g]^\top$ is the gravity vector in the NED frame. The specific force $\mathbf{f}^b$ is the quantity directly measured by IMUs and serves as the basis for estimating velocity and position through numerical integration.

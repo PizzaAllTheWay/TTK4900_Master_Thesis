@@ -1,0 +1,584 @@
+\subsection{Unscented Kalman Filter on Manifolds}
+\subsubsection{Concept and Motivation}
+Up to this point, all Kalman Filter variants, including the EKF and ESKF, approximate nonlinear systems locally through 1st order linearization. Although effective for mildly nonlinear dynamics, these methods rely on Jacobians, which introduce errors when the system exhibits strong nonlinearity or discontinuous dynamics. An alternative approach to local linearization is sampling based nonlinear approximation. A well known technique of this class is the \textit{``Unscented Transform (UT)''}, which represents a Gaussian distribution using a small, deterministically chosen set of sample points (called sigma points) and then propagates them through the nonlinear function to capture the transformed mean and covariance up to the third order for Gaussian inputs \cite{ukf}.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\linewidth]{Pictures/State_Estimation/Unscented_Kalman_Filter_on_Manifolds/Unscented_Transform.png}
+    \caption{Comparison of different methods for nonlinear mean and covariance propagation. The figure contrasts (a) direct sampling of the true nonlinear distribution, (b) linearization using the Extended Kalman Filter (EKF), and (c) the Unscented Transform (UT), which captures the mean and covariance more accurately without linearization.\textsuperscript{\cite{ukf}}}
+    \label{fig:state-estimation-uncented-transform}
+\end{figure}
+
+
+
+\subsubsection{Unscented Kalman Filter}
+The Unscented Transform is defined by generating a set of $2L + 1$ sigma points from the prior mean $\mathbf{x}$ and covariance $P$, where $L$ denotes the dimensionality of the state vector. Each sigma point represents a deterministic sample capturing the local mean and covariance structure of the state distribution, ensuring accurate nonlinear propagation up to the second order for any nonlinearity.
+$$
+\begin{aligned}
+    \chi_0 &= \mathbf{x} \\
+    \chi_i &= \mathbf{x} + (\sqrt{(L + \lambda)P_i})              && i = 1, \ldots, L \\
+    \chi_i &= \mathbf{x} - (\sqrt{(L + \lambda)P_{i - L} })       && i = L+1, \ldots, 2L
+\end{aligned}
+$$
+$$
+    \lambda = \alpha^2 (L + \kappa) - L
+$$
+where $\lambda$ is a scaling parameter controlling the spread of the sigma points. Each sigma point is assigned associated weights $W_i^m$ and $W_i^c$ for mean and covariance reconstruction. These weights ensure that both the central and surrounding sigma points contribute correctly to the nonlinear mean and covariance propagation according to their statistical significance. The weights are defined as
+$$
+\begin{aligned}
+    W_0^m &= \frac{\lambda}{L + \lambda} \\
+    W_0^c &= \frac{\lambda}{L + \lambda} + (1 - \alpha^2 + \beta) \\
+    W_i^m &= W_i^c = \frac{1}{2(L + \lambda)}                           && i = 1, \ldots, 2L
+\end{aligned}
+$$
+The parameters $\alpha$, $\beta$, and $\kappa$ govern the spread, scaling, and higher order accuracy of the sigma point distribution. According to the original Unscented Kalman Filter formulation by Julier and Uhlmann \cite{ukf}, these parameters should be tuned to balance numerical stability and approximation accuracy. The parameter $\alpha$ determines the overall spread of the sigma points around the mean, it is typically chosen as a small positive value ($10^{-3} \leq \alpha \leq 1$), with smaller values resulting in sigma points closer to the mean and larger values increasing the nonlinear coverage at the cost of potential numerical instability. The parameter $\kappa$ acts as a secondary scaling term that adjusts the effective spread of the sigma points; it is often set to $0$ for simplicity or $3 - L$ to guarantee positive semi definiteness of the covariance. The parameter $\beta$ encodes prior knowledge of the underlying distribution, for Gaussian distributions, $\beta = 2$ is recommended, as it ensures optimal 2nd order accuracy in the covariance reconstruction. 
+\\ \\  
+Together, these parameters define how the sigma points are positioned and weighted to best approximate the true nonlinear mean and covariance transformation while maintaining numerical stability across a wide range of system non-linearities. 
+\\ \\  
+Using these sigma points and weights, the propagated mean and covariance are computed as
+$$
+\begin{aligned}
+    \hat{\mathbf{x}}^- &= \sum_{i=0}^{2L} W_i^m f_d(\chi_i, \mathbf{u}) \\
+    P^- &= \sum_{i=0}^{2L} W_i^c [f_d(\chi_i, \mathbf{u}) - \hat{\mathbf{x}}][f_d(\chi_i, \mathbf{u}) - \hat{\mathbf{x}}]^\top
+\end{aligned}
+$$
+This process effectively replaces linearization and analytical Jacobian computation with a deterministic sampling of the nonlinear function. A similar procedure is applied during the measurement update step, where the sigma points are propagated through the nonlinear measurement model $h(\mathbf{x})$ to compute the predicted observation mean and covariance.
+\\ \\
+During the measurement update step, each predicted sigma point $\chi_i^-$ is passed through the nonlinear measurement model $h(\mathbf{x})$ (for example, the GNSS measurement model in Equation \ref{eq:aiding-measurement-model}) to get predicted measurement samples:
+$$
+    \mathcal{Z}_i = h(\chi_i^-)
+$$
+The predicted measurement sample mean is computed as
+$$
+    \hat{\mathbf{z}} = \sum_{i=0}^{2L} W_i^m \, \mathcal{Z}_i
+$$
+The corresponding innovation covariance and cross covariance are then obtained as
+$$
+    S = \sum_{i=0}^{2L} W_i^c \, (\mathcal{Z}_i - \hat{\mathbf{z}})(\mathcal{Z}_i - \hat{\mathbf{z}})^\top + R
+$$
+$$
+    P_{xz} = \sum_{i=0}^{2L} W_i^c \, (\chi_i^- - \hat{\mathbf{x}}^-)(\mathcal{Z}_i - \hat{\mathbf{z}})^\top,
+$$
+where $R$ is the measurement noise covariance matrix.  
+\\ \\
+The Kalman gain is then computed as
+$$
+    K = P_{xz} S^{-1}.
+$$
+The state and covariance are updated according to
+$$
+    \hat{\mathbf{x}} = \hat{\mathbf{x}}^- + K(\mathbf{z} - \hat{\mathbf{z}}),
+$$
+$$
+    P = P^- - K S K^\top.
+$$
+Finally, the quaternion component of the state is normalized to maintain unit length and ensure a valid rotation representation:
+$$
+    \mathbf{q} \leftarrow \frac{\mathbf{q}}{\|\mathbf{q}\|}.
+$$
+This completes the classical UKF update stage, where non-linearities are handled through sigma point sampling rather than analytic Jacobian linearization.
+
+
+
+\subsubsection{Manifold Operators}
+The classical UKF assumes that all system states evolve in Euclidean space $\mathbb{R}^n$. However, many real world systems and motion models, such as INS motion model \ref{eq:kinematics-motion-model}, include quantities that lie on nonlinear manifolds. A common example is the attitude represented by unit quaternions $\mathbf{q} \in \mathbb{S}^3$, which form a curved space where addition and averaging are not globally valid operations. Applying the standard UKF directly to such states can lead to inconsistencies, since linear updates may move the estimate off the manifolds surface.  
+\\ \\
+The \textit{``A Code for Unscented Kalman Filtering on Manifolds (UKF-M)''} \cite{ukf_manifold_code} extends the standard UKF by performing all statistical operations within the tangent space of the manifold. The Unscented Transform is carried out locally in this Euclidean tangent space, and the resulting sigma points are mapped back to the manifold using the exponential and logarithmic maps introduced in Equations \ref{eq:lie-groups-and-manifold-exponential} and \ref{eq:lie-groups-and-manifold-logarithmic}. This approach ensures that all propagated and updated states remain geometrically consistent.  
+\\ \\
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\linewidth]{Pictures/State_Estimation/Unscented_Kalman_Filter_on_Manifolds/Manifold_Mapping.png}
+    \caption{Mapping a local neighborhood in the state space (here: on the unit sphere $\mathbb{S}^2$) into $\mathbb{R}^n$ (here: the plane) allows for the use of standard sensor fusion algorithms without explicitly encoding the global topological structure.\textsuperscript{\cite{ukf_manifold}}}
+    \label{fig:state-estimation-manifold-mapping}
+\end{figure}
+\noindent
+To enable consistent state updates on a nonlinear manifold, the UKF-M introduces two generalized operators, $\varphi(\cdot,\cdot)$ and $\varphi^{-1}(\cdot)$, which replace standard addition and subtraction. They relate the manifold to its tangent space:
+$$
+\begin{aligned}
+    \mathbf{x}' &= \varphi(\mathbf{x}, \boldsymbol{\delta}) \\
+    \boldsymbol{\delta} &= \varphi^{-1}_{\mathbf{x}}(\mathbf{y})
+\end{aligned}
+$$
+Note that $\boldsymbol{\delta}$ is NOT the error state as used in the ESKF formulation. Instead, $\boldsymbol{\delta}$ represents a small perturbation defined in the local tangent space at $\mathbf{x}$, and can take any arbitrary value within that space.  
+\\ \\
+Here, $\mathbf{x}$ and $\mathbf{y}$ are elements on the manifold $\mathcal{M}$, while $\boldsymbol{\delta} \in T_\mathbf{x}\mathcal{M}$ is the corresponding vector in the tangent space. The $\varphi$ operator applies a perturbation from the tangent space to move the state along the manifold, producing an updated manifold element $\mathbf{x}'$. Conversely, the $\varphi^{-1}$ operator computes the minimal difference between two manifold states by mapping that displacement back into the tangent space.  
+\\ \\
+Together, these two operators define a consistent way to move back and forth between the manifold $\mathcal{M}$ and its tangent space $T_\mathbf{x}\mathcal{M}$, enabling the UKF-M to perform all statistical operations (eks, mean and covariance propagation) in a locally Euclidean space while keeping the final state representation on the true manifold.  
+\\ \\
+In Euclidean space, these operators reduce to standard vector addition and subtraction, ie $\mathbf{x}' = \varphi(\mathbf{x}, \boldsymbol{\delta}) = \mathbf{x} + \boldsymbol{\delta}$ and $\boldsymbol{\delta} = \varphi^{-1}_{\mathbf{x}}(\mathbf{y}) = \mathbf{y} - \mathbf{x}$. However, on curved manifolds like $\mathbb{S}^3$, directly adding vectors can move the state off the manifold, violating its geometric constraints. To address this, the $\varphi$ and $\varphi^{-1}$ operators rely on the exponential and logarithmic maps that move between the manifold and its tangent space:
+$$
+\begin{aligned}
+    \varphi(\mathbf{x}, \boldsymbol{\delta}) &= \exp(\boldsymbol{\delta}) \circ \mathbf{x} &\qquad (Tangent \rightarrow Manifold) \\
+    \varphi^{-1}_{\mathbf{x}}(\mathbf{y}) &= \log(\mathbf{y} \circ \mathbf{x}^{-1}) &\qquad (Tangent \leftarrow Manifold)
+\end{aligned}
+$$
+where $\circ$ denotes the group composition operator. The exponential map projects a tangent space perturbation onto the manifold, while the logarithmic map computes the smallest displacement between two manifold elements within the tangent space.  
+\\ \\
+These mappings are directly analogous to the Lie group relations (See Equations \ref{eq:lie-groups-and-manifold-exponential}-\ref{eq:lie-groups-and-manifold-logarithmic} and Figure \ref{fig:system-modeling-so3-se3})
+$$
+\begin{aligned}
+    R &= \exp(\boldsymbol{\omega}^\times) &\qquad (Tangent \rightarrow Manifold) \\
+    \boldsymbol{\omega} &= \log(R) &\qquad (Tangent \leftarrow Manifold)
+\end{aligned}
+$$
+which connect a rotation matrix $R \in SO(3)$ and its corresponding rotation vector $\boldsymbol{\omega} \in \mathbb{R}^3$. In the UKF-M framework, the same concept generalizes to full state vectors composed of multiple manifold and Euclidean components.
+
+
+
+\subsubsection{Manifold Operators for the Process Model}
+In the UKF-M framework, the motion model defined in Equation \ref{eq:kinematics-motion-model} evolves the system state over time using inertial measurements. Since the state vector
+$$
+    \mathbf{x} =
+    \begin{bmatrix}
+        \mathbf{p}_{b/O}^{n} & \mathbf{v}_{b/O}^{n} & \mathbf{q} & \mathbf{a}_b & \mathbf{\omega}_b
+    \end{bmatrix}^\top
+$$
+contains both Euclidean components $(\mathbf{p}, \mathbf{v}, \mathbf{a}_b, \mathbf{\omega}_b)$ and a manifold component $(\mathbf{q} \in \mathbb{S}^3)$, the standard addition and subtraction operations used in classical UKF cannot be directly applied. The attitude quaternion lies on the unit sphere $\mathbb{S}^3$, which is a nonlinear manifold, meaning that the linear operations used for Euclidean states are not globally valid.  
+\\ \\
+To handle this properly, the UKF-M defines two special manifold consistent operators, $\varphi(\cdot,\cdot)$ and $\varphi^{-1}(\cdot)$, that map between the nonlinear manifold and its local tangent space. These operators are used throughout the prediction and update stages whenever states or covariances are combined or compared.
+
+\paragraph{$\varphi$: Mapping a tangent space perturbation to the manifold} \mbox{}\\[0.5em] \noindent
+The $\varphi$ operator defines how a state on the manifold is updated using a perturbation vector $\boldsymbol{\xi}$ that lives in the tangent space. In this formulation, $\mathbf{x}$ represents the nominal state on the manifold, while $\boldsymbol{\xi}$ is a small local offset expressed in the linear tangent space around $\mathbf{x}$. The tangent space acts as a flat, Euclidean approximation of the manifold near the current mean, allowing linear algebra operations such as addition and covariance computation to be performed safely.
+\\ \\
+Taking an example of sigma point generation from the UKF-M algorithm discussed later down below takes form
+$$
+    \mathcal{X} = \varphi(\mathbf{x}, \boldsymbol{\xi})
+$$
+where $\mathbf{x}$ is the current estimated state and $\boldsymbol{\xi}$ represents a small perturbation drawn from the covariance in tangent space. The vector $\boldsymbol{\xi}$ has the same structure as the state but replaces the quaternion with a 3D rotation vector. Explicitly,
+$$
+    \mathbf{x} =
+    \begin{bmatrix}
+        \mathbf{p}_{b/O}^{n} & \mathbf{v}_{b/O}^{n} & \mathbf{q} & \mathbf{a}_b & \mathbf{\omega}_b
+    \end{bmatrix}^\top \quad
+    \boldsymbol{\xi} =
+    \begin{bmatrix}
+        \boldsymbol{\xi}_{p} & \boldsymbol{\xi}_{v} & \boldsymbol{\xi}_{\theta} & \boldsymbol{\xi}_{a_b} & \boldsymbol{\xi}_{w_b}
+    \end{bmatrix}^\top
+$$
+Here, the quaternion $\mathbf{q}$ is an element of the unit hypersphere $\mathbb{S}^3$, while the vector $\boldsymbol{\xi}_{\theta} \in \mathbb{R}^3$ is a tangent space representation of a small rotation around the mean orientation.
+\\ \\
+In tangent space, quaternions do not exist, only 3D rotation vectors do. The vector $\boldsymbol{\xi}_{\theta}$ simply points in the direction and magnitude of the local rotational perturbation, describing how the attitude should change infinitesimally around the current estimate.
+\\ \\
+When converting this local perturbation back to the manifold, the rotation vector must be mapped to a unit quaternion on $\mathbb{S}^3$. This is done through the exponential map, which transforms a small 3D vector into a valid quaternion rotation. The mapping is
+$$
+    \mathbf{q}_{\boldsymbol{\xi}_{\theta}} \triangleq 
+    \mathrm{Exp}\left(\tfrac{1}{2}\boldsymbol{\xi}_{\theta}\right) =
+    \begin{bmatrix}
+        \cos\left(\tfrac{|\boldsymbol{\xi}_{\theta}|}{2}\right) \\
+        \frac{\boldsymbol{\xi}_{\theta}}{|\boldsymbol{\xi}_{\theta}|}
+        \sin\left(\tfrac{|\boldsymbol{\xi}_{\theta}|}{2}\right)
+    \end{bmatrix}
+$$
+The division by two appears because quaternion rotations encode angles that are twice the corresponding rotation vector magnitude. Using this, the complete state perturbation becomes
+$$
+    \varphi(\mathbf{x}, \boldsymbol{\xi}) =
+    \begin{bmatrix}
+        \mathbf{p}_{b/O}^{n} + \boldsymbol{\xi}_{p} \\
+        \mathbf{v}_{b/O}^{n} + \boldsymbol{\xi}_{v} \\
+        \mathbf{q} \otimes \mathrm{Exp}\left(\tfrac{1}{2}\boldsymbol{\xi}_{\theta}\right) \\
+        \mathbf{a}_b + \boldsymbol{\xi}_{a_b} \\
+        \mathbf{\omega}_b + \boldsymbol{\xi}_{\omega_b}
+    \end{bmatrix}
+$$
+The linear components like position, velocity, and biases are updated using simple vector addition, since they exist in Euclidean space. The quaternion, however, must be updated multiplicatively using the exponential map to remain on the manifold $\mathbb{S}^3$. This ensures that every sigma point maintains unit norm and represents a valid orientation.
+\\ \\
+In essence, $\boldsymbol{\xi}$ is never a physical state but a local linear displacement defined in the tangent space. It expresses how much the manifold state should move in each direction, including rotation, to represent local uncertainty. When mapped back through $\varphi$, the translational components shift linearly, while the rotational component \textit{``bends''} along the hypersphere surface via the exponential map. This motion allows the UKF-M to handle quaternions and other manifold states consistently, performing uncertainty propagation and updates in linear tangent space while always keeping the resulting states valid on their nonlinear manifold.
+
+\paragraph{$\varphi^{-1}$: Mapping a manifold difference to the tangent space} \mbox{}\\[0.5em] \noindent
+The $\varphi^{-1}$ operator defines how the difference between two states on the manifold, $\mathbf{x}_1$ and $\mathbf{x}_2$, is expressed as a perturbation vector in the tangent space. While $\varphi$ projects a local perturbation from the tangent space onto the manifold, $\varphi^{-1}$ performs the inverse operation, it measures how far one manifold element is from another and maps that difference back into the linear tangent domain. This operation is essential for computing residuals, innovations, and covariance updates within the UKF-M, since all statistical quantities must reside in Euclidean tangent space.
+\\ \\
+For two states
+$$
+    \mathbf{x}_1 =
+    \begin{bmatrix}
+        \mathbf{p}_1 & \mathbf{v}_1 & \mathbf{q}_1 & \mathbf{a}_{b_1} & \mathbf{\omega}_{b_1}
+    \end{bmatrix}^\top,
+    \quad
+    \mathbf{x}_2 =
+    \begin{bmatrix}
+        \mathbf{p}_2 & \mathbf{v}_2 & \mathbf{q}_2 & \mathbf{a}_{b_2} & \mathbf{\omega}_{b_2}
+    \end{bmatrix}^\top
+$$
+the manifold consistent subtraction is defined as
+$$
+    \varphi^{-1}_{\mathbf{x}_2}(\mathbf{x}_1) =
+    \begin{bmatrix}
+        \mathbf{p}_1 - \mathbf{p}_2 \\
+        \mathbf{v}_1 - \mathbf{v}_2 \\
+        2\,\mathrm{Log}\!\left(\mathbf{q}_2^{-1} \otimes \mathbf{q}_1\right) \\
+        \mathbf{a}_{b_1} - \mathbf{a}_{b_2} \\
+        \mathbf{\omega}_{b_1} - \mathbf{\omega}_{b_2}
+    \end{bmatrix}
+$$
+Here, the linear quantities (position, velocity, and sensor biases) can be subtracted directly, as they live in Euclidean space. However, the quaternion part requires special handling because it resides on the unit hypersphere $\mathbb{S}^3$. To obtain a meaningful rotational difference between $\mathbf{q}_1$ and $\mathbf{q}_2$, the relative rotation
+$$
+    \mathbf{q}_{\text{relative}} = \mathbf{q}_2^{-1} \otimes \mathbf{q}_1
+$$
+is computed, representing the rotation that brings $\mathbf{q}_2$ to $\mathbf{q}_1$.
+\\ \\
+This relative quaternion is then converted into its corresponding tangent space vector using the logarithmic map, which projects the quaternion from $\mathbb{S}^3$ to $\mathbb{R}^3$. For a quaternion $\mathbf{q}_{\text{relative}} = [q_w, q_{\mathbf{v}}]^\top$ where $q_{\mathbf{v}} = [q_x, q_y, q_z]^T$ composed of scalar $q_w$ and vector $q_{\mathbf{v}}$ parts, the mapping is defined as
+$$
+    \boldsymbol{\theta}_{\text{relative}} \triangleq
+    \mathrm{Log}(\mathbf{q}_{\text{relative}}) =
+    \begin{cases}
+        \displaystyle \frac{2 \, \arctan2(\|q_{\mathbf{v}}\|, q_w)}{\|q_{\mathbf{v}}\|}\,q_{\mathbf{v}}, & \text{if } \|q_{\mathbf{v}}\| \neq 0 \\[1em]
+        \mathbf{0}, & \text{otherwise}
+    \end{cases}
+$$
+The result of this operation is a 3D rotation vector $\boldsymbol{\theta}_{\text{relative}} \in \mathbb{R}^3$ that lies in the tangent space of the unit quaternion manifold. This vector points along the rotation axis and has a magnitude equal to the rotation angle between the two orientations. It therefore provides a minimal, linear representation of the orientation error. The factor of two ensures consistency with the quaternion exponential map used in the $\varphi$ operator.
+\\ \\
+Intuitively, $\varphi^{-1}$ answers the question: \textit{``What small rotation and translation in tangent space would transform $\mathbf{x}_2$ into $\mathbf{x}_1$?''} For Euclidean components, the answer is simply the difference between vectors. For rotational components, it is the smallest rotation vector on the manifold surface that aligns $\mathbf{q}_2$ with $\mathbf{q}_1$. By performing this mapping, the UKF-M can compute orientation residuals, innovations, and covariance deviations in a consistent, linearized space without ever violating the unit quaternion constraint.
+
+\paragraph{Interpretation} \mbox{}\\[0.5em] \noindent
+The $\varphi$ and $\varphi^{-1}$ operators together define the mathematical bridge between the nonlinear manifold and its locally linear tangent space, ensuring that attitude, position, and bias states are updated consistently. The $\varphi$ operator applies a perturbation from tangent space to the manifold, producing a new valid state on $\mathbb{S}^3$, while the $\varphi^{-1}$ operator performs the reverse, projecting the difference between two manifold states back into tangent space where linear operations such as mean and covariance can be computed.
+\\ \\
+Within the UKF-M motion framework, $\varphi$ is used when generating sigma points or updating the state estimate after correction, effectively moving the state along the manifold surface in response to perturbations. Conversely, $\varphi^{-1}$ is used when comparing predicted and updated states or computing innovations, allowing differences in orientation and position to be expressed in a linearized space suitable for statistical computation.
+\\ \\
+Together, these mappings preserve the unit quaternion constraint and maintain full geometric consistency of the nonlinear attitude dynamics described by the motion model \ref{eq:kinematics-motion-model}, preventing normalization errors or distortion of uncertainty during repeated prediction and update cycles.
+
+
+
+\subsubsection{Manifold Operators for the Measurement Model}
+The measurement model in Equation~\ref{eq:aiding-measurement-model} maps the nonlinear navigation state $\mathbf{x}$ into a measurable quantity $\mathbf{z}$ composed of GNSS position and yaw. The measurement manifold therefore combines both Euclidean and circular components:
+$$
+    \mathbf{z} =
+    \begin{bmatrix}
+        \mathbf{p}_{b/O}^{n} \\
+        \psi
+    \end{bmatrix},
+    \quad
+    \mathbf{z} \in \mathbb{R}^3 \times \mathbb{S}^1
+$$
+where $\psi$ is the yaw angle, living on the circle manifold $\mathbb{S}^1$. 
+\\ \\
+The process $f(\cdot)$ and measurement $h(\cdot)$ manifolds thus differ in structure: while the state includes quaternion orientation $\mathbf{q} \in \mathbb{S}^3$, the measurement only includes a single angular degree of freedom (yaw) along with the position.  
+
+\paragraph{$\varphi$: Mapping a tangent space perturbation to the manifold} \mbox{}\\[0.5em] \noindent
+The $\varphi$ operator defines how a measurement correction or innovation is consistently applied on the measurement manifold. This ensures that angular quantities, such as yaw, remain wrapped within the valid interval $[-\pi, \pi]$ when updated.  
+\\ \\
+For a predicted measurement $\hat{\mathbf{z}} = h(\hat{\mathbf{x}})$ and a correction $\delta\mathbf{z}$ obtained from the filter update, the operation is
+$$
+    \varphi(\hat{\mathbf{z}}, \delta\mathbf{z}) =
+    \begin{bmatrix}
+        \hat{\mathbf{z}}_p + \delta\mathbf{z}_p \\
+        \mathrm{wrap\_to\_pi}(\hat{\mathbf{z}}_\psi + \delta\mathbf{z}_\psi)
+    \end{bmatrix}
+$$
+where $\mathrm{wrap\_to\_pi}(\cdot)$ ensures angular consistency on the $\mathbb{S}^1$ manifold. Without this wrapping, the filter could incorrectly interpret heading discontinuities near $\pm\pi$ as large jumps, destabilizing the update step.  
+
+\paragraph{$\varphi^{-1}$: Mapping a manifold difference to the tangent space} \mbox{}\\[0.5em] \noindent
+For completeness, the inverse operator $\varphi^{-1}$ defines how a difference between two measurement manifold elements can be represented in tangent space. It is conceptually expressed as
+$$
+    \boldsymbol{\nu} = \varphi^{-1}_{\hat{\mathbf{z}}}(\mathbf{z}) =
+    \begin{bmatrix}
+        \mathbf{z}_p - \hat{\mathbf{z}}_p \\
+        \mathrm{wrap\_to\_pi}(\mathbf{z}_\psi - \hat{\mathbf{z}}_\psi)
+    \end{bmatrix}
+$$
+Although mathematically defined, this operation is seldom used in practice, as measurement innovations are usually handled directly through $\varphi$ in the update step.
+
+\paragraph{Interpretation} \mbox{}\\[0.5em] \noindent
+In the measurement model, the $\varphi$ operator is the one predominantly used, as it applies measurement space corrections in a geometrically consistent manner, maintaining continuity of the angular components across the $\pm\pi$ boundary. The $\varphi^{-1}$ operator, on the other hand, is primarily included for formal completeness, providing a way to express manifold differences in tangent space when required by specific formulations such as smoothing or optimization frameworks.  
+\\ \\
+Together, these operators maintain consistency between the nonlinear measurement manifold $\mathbb{R}^3 \times \mathbb{S}^1$ and its tangent space. The $\varphi$ operator ensures that corrections are applied while respecting the circular geometry of $\mathbb{S}^1$, while $\varphi^{-1}$ provides the theoretical foundation for inverse mappings when needed. This guarantees stable, geometrically consistent measurement updates and accurate handling of both position and yaw measurements within the UKF-M framework.
+
+
+
+\subsubsection{\texttt{set\_weights(dim, \texorpdfstring{$\alpha$}{alpha})}: Sigma Point Weights Parameter Function}
+The UKF-M defines sigma point weighting through a generalized function:
+\begin{equation}
+    \{\lambda,\, w_0,\, w_i^{(m)},\, w_i^{(c)}\} = \texttt{set\_weights}(dim, \alpha)
+    \label{eq:state-estimation-set-weights}
+\end{equation}
+This function specifies how sigma points are placed and weighted in the tangent space of the manifold during both prediction and update steps.
+\\ \\
+The sigma point weights determine how uncertainty is distributed around the mean state. Unlike the classical UKF formulation, which uses the parameter triplet $(\alpha, \beta, \kappa)$, the UKF-M retains only a single spread parameter $\alpha$. The manifold retraction $\varphi(\cdot)$ and its inverse $\varphi^{-1}(\cdot)$ already guarantee second order accuracy and preserve geometric consistency, rendering $\beta$ and $\kappa$ unnecessary. This simplification improves numerical stability and reduces tuning complexity, as detailed in \textit{``Unscented Kalman Filtering on Lie Groups''} \cite{ukf_on_lie_groups} and \textit{``A Code for Unscented Kalman Filtering on Manifolds (UKF-M)''} \cite{ukf_manifold_code}.
+\\ \\
+For a given tangent space dimension $dim$ and spread parameter $\alpha$, the scaling parameter $\lambda$ is computed as
+$$
+    \lambda = (\alpha^2 - 1)\,dim
+$$
+Smaller $\alpha$ values lead to tightly clustered sigma points suitable for near linear dynamics, while larger $\alpha$ values spread them further to better capture nonlinear behavior. Typical values lie within $\alpha \in [10^{-3},\,1]$
+\\ \\
+Each sigma point set is defined by symmetric weights around the mean:
+$$
+    \begin{aligned}
+    w_i^{(m)} &= \frac{\lambda}{dim+\lambda} \quad &i = 1,\ldots,2 \, dim \\
+    w_i^{(c)} &= \frac{1}{2(dim+\lambda)}  \quad &i = 1,\ldots,2 \, dim \\
+    w_0 &= \frac{\lambda}{dim+\lambda} + 3 - \alpha^2 
+    \end{aligned}
+$$
+Here, $w_i^{(m)}$ is the mean weight of the central sigma point, $w_i^{(c)}$ are the symmetric weights for all other sigma points, and $w_0$ adds a correction term that stabilizes the covariance evolution on manifolds. The term $(3 - \alpha^2)$ is unique to the manifold formulation and does not appear in the classical UKF. It compensates for higher order effects introduced by nonlinear retractions $\varphi(\cdot)$ and its inverse $\varphi^{-1}(\cdot)$, improving numerical stability and covariance consistency \cite{ukf_manifold_code}.
+\\ \\
+The weight computation used in UKF-M can be summarized as:
+$$
+    \text{set\_weights}(dim, \alpha) \; \Rightarrow \;
+    \begin{cases}
+        \lambda = (\alpha^2 - 1)\,dim \\
+        w_i^{(m)} = \dfrac{\lambda}{dim+\lambda} \\
+        w_i^{(c)} = \dfrac{1}{2(dim+\lambda)} \\
+        w_0 = \dfrac{\lambda}{dim+\lambda} + 3 - \alpha^2
+    \end{cases}
+$$
+This unified expression is used in all stages of the UKF-M algorithm with the appropriate tangent space dimension.
+\\ \\
+The argument $dim$ corresponds to the dimension of the tangent space associated with the uncertainty being represented:
+$$
+    dim \in \{d,\, q,\, u\},
+$$
+where:
+\begin{itemize}
+    \item $d = \text{dim}(P)$ is used for the \textbf{state uncertainty} during prediction and for the \textbf{measurement update}
+    \item $q = \text{dim}(Q)$ is used for the \textbf{process noise} during prediction
+    \item $u = \text{dim}(P_{up})$ is defined in algorithm but never actually used for state estimation.
+\end{itemize}
+In the UKF-M code, each step uses its own scaling parameter $\alpha_d, \alpha_q, \alpha_u$ respectively:
+$$
+    \alpha = [\alpha_d,\, \alpha_q,\, \alpha_u]
+$$
+allowing independent control over sigma point spread in each stage.
+\\ \\
+For a tangent space of dimension $dim$, the number of sigma points generated is $2\,dim + 1$. For example, for INS model \ref{eq:kinematics-motion-model-states} with 16 dimensions the total number of sigma points generated is $(d=16)$, $33$ sigma points are generated. Meanwhile, for the process noise model, which includes accelerometer and gyroscope measurement noise as well as their biases $(q=12)$, the filter generates $25$ sigma points. Note that in the current UKF-M implementation, the parameter $u$ is defined but never actually used. All sigma point generation in both propagation and update steps relies on the state dimension $d$ and $q$. The reason $u$ exists in the formulation is purely for generality or future extensions, but it remains unused in the standard UKF-M algorithm.
+
+
+
+\subsubsection{Modified Process Model for the UKF-M}
+The deterministic discrete time motion model introduced in Equation \ref{eq:state-estimation-discrete-propagartion} defines the state evolution as
+$$
+    \mathbf{x}_{k+1} = f_d(\mathbf{x}_k, \mathbf{u}_k)
+$$
+where $\mathbf{u}_k$ represents the measured IMU input (accelerometer and gyroscope), and $f_d(\cdot)$ is fully deterministic. However, in the UKF-M, the process model must explicitly accept an additive noise term $\mathbf{w}_k$:
+$$
+    \mathbf{x}_{k+1} = f_d(\mathbf{x}_k, \mathbf{u}_k, \mathbf{w}_k)
+$$
+This stochastic extension is necessary because the UKF-M propagates a set of sigma points that represent samples of both state and process noise. Each sigma point includes a perturbation $\mathbf{w}_k$ drawn from the process noise distribution $\mathcal{N}(\mathbf{0}, Q_k)$, where $Q_k$ is the discretized process noise covariance. By propagating these noise sigma points through the dynamics, the filter captures how uncertainty in the process model affects the state evolution, without requiring any linearization.
+\\ \\
+For the discretized INS model in Equation \ref{eq:state-estimation-discrete-propagartion}, process noise is naturally introduced by perturbing the measured IMU inputs. Thus, the model becomes:
+$$
+    \begin{aligned}
+        f_d(\mathbf{x}_k, \mathbf{u}_k, \mathbf{w}_k) = 
+        \mathbf{x}_{k+1} =
+        \begin{bmatrix}
+            \mathbf{p}_{b/O_{k+1}}^{n} \\
+            \mathbf{v}_{b/O_{k+1}}^{n} \\ 
+            \mathbf{q}_{k+1} \\ 
+            \mathbf{a}_{b_{k+1}} \\
+            \boldsymbol{\omega}_{b_{k+1}}
+        \end{bmatrix}
+        =
+        \begin{bmatrix}
+            \mathbf{p}_{b/O_{k}}^{n} + \mathbf{v}_{b/O_{k}}^{n} \Delta t + \tfrac{1}{2}\!\left(R(\mathbf{q}_k)\!\left[(\mathbf{a}_m + \mathbf{w}^{a}_k) - \mathbf{a}_{b_k}\right] + \mathbf{g}^n\right)\!\Delta t^2 \\
+            \mathbf{v}_{b/O_{k}}^{n} + \!\left(R(\mathbf{q}_k)\!\left[(\mathbf{a}_m + \mathbf{w}^{a}_k) - \mathbf{a}_{b_k}\right] + \mathbf{g}^n\right)\!\Delta t \\
+            \mathbf{q}_{k} \otimes \mathrm{Exp}\!\left([(\boldsymbol{\omega}_m + \mathbf{w}^{\omega}_k) - \boldsymbol{\omega}_{b_k}]_{\times}\Delta t\right) \\
+            (\mathbf{a}_{b_{k}} + \mathbf{w}^{a_b}_k) - p_{\mathbf{a}b}\,\mathbf{a}_{b_{k}} \Delta t \\
+            (\boldsymbol{\omega}_{b_{k}} + \mathbf{w}^{\omega_b}_k) - p_{\boldsymbol{\omega}b}\,\boldsymbol{\omega}_{b_{k}} \Delta t
+        \end{bmatrix}
+    \end{aligned}
+    \label{eq:state-estimation-discrete-propagartion-modified-with-noise}
+$$
+where
+$$
+    \mathbf{w}_k = 
+    \begin{bmatrix}
+        \mathbf{w}^{\omega}_k & \mathbf{w}^{a}_k & \mathbf{w}^{\omega_b}_k & \mathbf{w}^{a_b}_k
+    \end{bmatrix}^\top
+$$
+collects all process noise components:
+\begin{itemize}
+    \item $\mathbf{w}^{\omega}_k$: gyroscope measurement noise
+    \item $\mathbf{w}^{a}_k$: accelerometer measurement noise
+    \item $\mathbf{w}^{\omega_b}_k$: gyro bias random walk
+    \item $\mathbf{w}^{_b}_k$: accelerometer bias random walk
+\end{itemize}
+The noise $\mathbf{w}_k$ is not drawn randomly during runtime. Instead, the UKF-M generates a deterministic set of noise sigma points $\{\mathbf{w}_i\}_{i=1}^{2q}$ from the covariance $Q_k$:
+$$
+    \mathbf{w}_i = 
+    \begin{cases}
+        \text{col}\left(\sqrt{(q+\lambda)Q_k}\right)_i \qquad &i = 1,\ldots,q, \\
+        -\text{col}\left(\sqrt{(q+\lambda)Q_k}\right)_{i-q} \qquad &i = q+1,\ldots,2q
+    \end{cases}
+$$
+Here, $q$ denotes the dimension of the process noise covariance matrix $Q_k$, $\lambda$ is the scaling factor from the sigma point generation, and $\text{col}(\cdot)_i$ extracts the $i$-th column of the matrix square root. 
+\\ \\
+Each noise sigma point is passed into the process model $f_d(\mathbf{x}_k, \mathbf{u}_k, \mathbf{w}_j)$ during prediction. This allows the filter to account for the effect of process uncertainty without Monte Carlo sampling or Jacobian linearization.
+\\ \\
+This modification preserves the structure of the original INS model while enabling the UKF-M to propagate uncertainty on both the state and process noise manifolds. It ensures that both the deterministic mean $\hat{\mathbf{x}}_k^-$ and its covariance $P_k^-$ evolve consistently according to the stochastic dynamics of the system.
+
+
+
+\subsubsection{Filter Algorithm: Prediction Step}
+The prediction step in the UKF-M propagates both the mean state and its covariance through the nonlinear process model while ensuring full geometric consistency on the underlying manifold \cite{ukf_manifold_code}. All statistical operations are performed in the tangent space of the manifold, while the mean state itself always remains on the manifold.
+
+\paragraph{Input:} 
+$$
+    \hat{\mathbf{x}}_{k-1}, \; P_{k-1}, \; \mathbf{u}_k, \; Q_k, \; \alpha
+$$
+where $\hat{\mathbf{x}}_{k-1}$ is the previous mean state on the manifold, $P_{k-1}$ the covariance in its tangent space, $\mathbf{u}_k$ the input (eks, control or IMU increment), $Q_k$ the process noise covariance, and $\alpha$ the sigma point scaling parameter.
+
+\paragraph{Step 1 - Propagate the mean state:} \mbox{}\\[0.5em] \noindent
+The deterministic state prediction is first computed using the process model $f_d(\mathbf{x}_k, \mathbf{u}_k)$ (see Equation \ref{eq:state-estimation-discrete-propagartion}):
+$$
+    \hat{\mathbf{x}}_{k}^{-} = f_d(\hat{\mathbf{x}}_{k-1}, \mathbf{u}_k, \mathbf{0})
+$$
+This represents the nominal propagation of the mean without process noise. The result $\hat{\mathbf{x}}_{k}^{-}$ remains on the manifold due to the definition of $f_d(\mathbf{x}_k, \mathbf{u}_k)$.
+
+\paragraph{Step 2 - Compute sigma-point weights:} \mbox{}\\[0.5em] \noindent
+Using the scaling parameter $\alpha$ and the tangent space dimension $d$, the sigma point scaling and weights are obtained from:
+$$
+    \{\lambda,\, w_0,\, w_i^{(m)},\, w_i^{(c)}\}_{i=0,\ldots,2d} = \texttt{set\_weights}(d, \alpha)
+$$
+as defined in Equation \ref{eq:state-estimation-set-weights}. These parameters determine how far and how strongly each sigma point contributes to the propagated covariance. For the INS motion model in Equation \ref{eq:state-estimation-discrete-propagartion}, the tangent space dimension is $d=15$, corresponding to position, velocity, attitude, and accelerometer and gyroscope bias states.
+
+\paragraph{Step 3 - Generate state sigma points in the tangent space:} \mbox{}\\[0.5em] \noindent
+From the Cholesky decomposition of the covariance $P_{k-1}$, the tangent sigma point perturbations are constructed as:
+$$
+    \boldsymbol{\xi}_i = 
+    \begin{cases}
+        \text{col}\left(\sqrt{(d+\lambda)P_{k-1}}\right)_i \qquad &d = 1,\ldots,d, \\
+        -\text{col}\left(\sqrt{(d+\lambda)P_{k-1}}\right)_{i-d} \qquad &i = d+1,\ldots,2d
+    \end{cases}
+$$
+where $\text{col}(\cdot)_i$ extracts the $i$-th column of the matrix square root. Each $\boldsymbol{\xi}_j \in \mathbb{R}^d$ represents a local perturbation in the tangent space of the current state.
+
+\paragraph{Step 4 - Retract sigma points onto the manifold and propagate through the model:} \mbox{}\\[0.5em] \noindent
+Each perturbation $\boldsymbol{\xi}_i$ from the tangent space is mapped onto the manifold using the retraction operator $\varphi(\cdot)$ and then propagated through the process model $f_d(\cdot)$. For each sigma point:
+$$
+    \chi_i^{k} = f_d\big(\varphi(\hat{\mathbf{x}}_{k-1},\, \boldsymbol{\xi}_i),\, \mathbf{u}_k,\, \mathbf{0}\big),\qquad i = 1,\ldots,2d
+$$
+This produces $2d$ propagated manifold states $\chi_i^k$ that represent how local perturbations evolve under the nonlinear dynamics. Each $\chi_i^k$ remains a valid manifold element (eks, normalized quaternion or valid $\mathrm{SE}(3)$ pose).
+
+\paragraph{Step 5 - Compute the propagated state covariance:} \mbox{}\\[0.5em] \noindent
+After propagation, each sigma point is mapped back into the tangent space of the predicted mean $\hat{\chi}_k$ using the inverse retraction:
+$$
+    \boldsymbol{\eta}_i = \varphi^{-1}_{\hat{\mathbf{x}}_{k}^{-}}(\chi_i^k)
+$$
+These deviations express how far each propagated sigma point lies from the predicted mean in local linear coordinates. The state induced covariance contribution is then:
+$$
+    \Sigma_k = \sum_{i=1}^{2d} w_i^{(c)}\, \boldsymbol{\eta}_i \boldsymbol{\eta}_i^\top
+$$
+which captures the spread due to state uncertainty.
+
+\paragraph{Step 6 - Generate process noise sigma points:} \mbox{}\\[0.5em] \noindent
+Using the scaling parameter $\alpha$ and the process noise dimension $q$, the sigma point scaling and weights are obtained from:
+$$
+    \{\lambda,\, w_0,\, w_i^{(m)},\, w_i^{(c)}\}_{i=0,\ldots,2q} = \mathtt{set\_weights}(q, \alpha)
+$$
+as defined in Equation \ref{eq:state-estimation-set-weights}. These parameters determine the spread and relative weighting of the noise sigma points generated from the process noise covariance $Q_k$:
+$$
+    \mathbf{w}_i = 
+    \begin{cases}
+        \text{col}\left(\sqrt{(q+\lambda)Q_k}\right)_i \qquad &i = 1,\ldots,q, \\
+        -\text{col}\left(\sqrt{(q+\lambda)Q_k}\right)_{i-q} \qquad &i = q+1,\ldots,2q
+    \end{cases}
+$$
+Here, $q$ corresponds to the dimension of the process noise vector, which for the INS model is typically $q=12$ (covering gyroscope, accelerometer, and bias random walk noise terms). $\text{col}(\cdot)_i$ extracts the $i$-th column of the matrix square root.
+
+\paragraph{Step 7 - Propagate noise sigma points through the model:} \mbox{}\\[0.5em] \noindent
+Each noise sigma point $\mathbf{w}_i$ is injected into the process model to determine its effect on the predicted state:
+$$
+    \tilde{\chi}_i^{k} = f_d(\hat{\mathbf{x}}_{k-1},\, \mathbf{u}_k,\, \mathbf{w}_i),\qquad i = 1,\ldots,2q
+$$
+and is then mapped back into the tangent space of the predicted mean:
+$$
+    \tilde{\boldsymbol{\eta}}_i = \varphi^{-1}_{\hat{\mathbf{x}}_{k}^{-}}(\tilde{\chi}_i^{k})
+$$
+Here, each $\tilde{\chi}_i^{k}$ represents the propagated manifold state obtained by applying a specific noise realization $\mathbf{w}_i$ to the nominal prediction. The corresponding $\tilde{\boldsymbol{\eta}}_i$ is its local deviation in the tangent space around the predicted mean $\hat{\mathbf{x}}_{k}^{-}$, expressing how that noise perturbation alters the state in linear coordinates suitable for covariance computation.
+
+\paragraph{Step 8 - Compute the full predicted covariance:} \mbox{}\\[0.5em] \noindent
+The total predicted covariance combines the contributions from both the propagated state and the injected process noise:
+$$
+    P_k^{-} = \Sigma_k + \sum_{i=1}^{2q} w_i^{(c)}\, \tilde{\boldsymbol{\eta}}_i \tilde{\boldsymbol{\eta}}_i^\top
+$$
+Here, $P_k^{-}$ remains in the tangent space centered at $\hat{\mathbf{x}}_{k}^{-}$, ensuring that covariance operations stay Euclidean while the mean remains on the manifold.
+
+\paragraph{Summary:} \mbox{}\\[0.5em] \noindent
+The prediction step produces the a priori state estimate $\hat{\mathbf{x}}_{k}^{-}$ and its covariance $P_{k}^{-}$. The mean state is propagated deterministically through the process model, while the covariance is updated using the spread of both state and process noise sigma points mapped through the manifold retraction. This ensures that the predicted mean remains on the manifold and the covariance evolves consistently in its tangent space, providing a second order accurate and geometrically valid prediction.
+
+
+
+\subsubsection{Filter Algorithm: Correction Step}
+The correction step refines the predicted state $\hat{\mathbf{x}}_{k}^{-}$ and covariance $P_{k}^{-}$ using the incoming measurement $\mathbf{z}_k$. In the UKF-M framework, all computations occur in the local tangent space to maintain geometric consistency on the manifold \cite{ukf_manifold_code}\cite{ukf_on_lie_groups}.
+
+\paragraph{Input:}
+$$
+    \hat{\mathbf{x}}_{k}^{-}, \; P_{k}^{-}, \; \mathbf{z}_k, \; R_k, \; \alpha
+$$
+where $\hat{\mathbf{x}}_{k}^{-}$ is the predicted mean on the manifold, $P_{k}^{-}$ its covariance, $\mathbf{z}_k$ the measurement, $R_k$ the measurement noise covariance, and $\alpha$ the sigma point scaling parameter.
+
+\paragraph{Step 1 - Compute sigma-point weights:} \mbox{}\\[0.5em] \noindent
+The sigma point scaling and weights are computed in the tangent space of dimension $d = \mathrm{dim}(P_k^{-})$:
+$$
+    \{\lambda,\, w_0,\, w_i^{(m)},\, w_i^{(c)}\}_{i=0,\ldots,2d} = \texttt{set\_weights}(d, \alpha)
+$$
+as defined in Equation \ref{eq:state-estimation-set-weights}. These weights determine the spread and influence of each sigma point during the update.
+
+\paragraph{Step 2 - Generate state sigma points:} \mbox{}\\[0.5em] \noindent
+The Cholesky decomposition of $P_k^{-}$ provides the tangent-space perturbations:
+$$
+    \boldsymbol{\xi}_i =
+    \begin{cases}
+        \text{col}\!\left(\sqrt{(d+\lambda)P_k^{-}}\right)_i \qquad & i = 1,\ldots,d, \\[4pt]
+        -\text{col}\!\left(\sqrt{(d+\lambda)P_k^{-}}\right)_{i-d} \qquad & i = d+1,\ldots,2d
+    \end{cases}
+$$
+Each $\boldsymbol{\xi}_i$ represents a local perturbation of $\hat{\mathbf{x}}_{k}^{-}$ in the tangent space. $\text{col}(\cdot)_i$ extracts the $i$-th column of the matrix square root.
+
+\paragraph{Step 3 - Propagate sigma points through the measurement model:} \mbox{}\\[0.5em] \noindent
+Each sigma point is retracted onto the manifold using $\varphi(\cdot)$ and propagated through the nonlinear measurement model $h(\cdot)$ to produce a set of predicted measurement sigma points:
+$$
+    \begin{aligned}
+        \mathcal{Z}_0 &= h(\hat{\mathbf{x}}_{k}^{-}) \\
+        \mathcal{Z}_i &= h\!\left(\varphi(\hat{\mathbf{x}}_{k}^{-}, \boldsymbol{\xi}_i)\right), \quad &i = 1,\ldots,2d
+    \end{aligned}
+$$
+The predicted mean measurement is then obtained by weighted averaging:
+$$
+    \hat{\mathbf{z}}_k = w_0^{(m)}\mathcal{Z}_0 + \sum_{i=1}^{2d} w_i^{(m)}\mathcal{Z}_i
+$$
+
+\paragraph{Step 4 - Compute innovation and cross-covariance matrices:} \mbox{}\\[0.5em] \noindent
+After centering the measurement sigma points around $\hat{\mathbf{z}}_k$, the innovation covariance $S$ and the state measurement cross covariance $P_{\xi \mathcal{Z}}$ are computed as:
+$$
+    \begin{aligned}
+        S &= w_0^{(c)}(\mathcal{Z}_0 - \hat{\mathbf{z}}_k)(\mathcal{Z}_0 - \hat{\mathbf{z}}_k)^\top + \sum_{i=1}^{2d} w_i^{(c)} \,(\mathcal{Z}_i - \hat{\mathbf{z}}_k)(\mathcal{Z}_i - \hat{\mathbf{z}}_k)^\top + R_k \\
+        P_{\xi z} &= \sum_{i=1}^{2d} w_i^{(c)} \, \boldsymbol{\xi}_i (\mathcal{Z}_i - \hat{\mathbf{z}}_k)^\top
+    \end{aligned}
+$$
+Here, $S$ represents the innovation covariance in measurement space, accounting for both predicted measurement spread and sensor noise, while $P_{\xi z}$ quantifies the correlation between state perturbations and measurement deviations.
+
+\paragraph{Step 5 - Apply Kalman update:} \mbox{}\\[0.5em] \noindent
+The Kalman gain is computed using the cross covariance and innovation covariance as
+$$
+    K = P_{\xi z} S^{-1}
+$$
+which determines how much the new measurement influences the state correction. The state innovation in tangent space is then computed as
+$$
+    \boldsymbol{\xi}_k^{+} = K(\mathbf{z}_k - \hat{\mathbf{z}}_k)
+$$
+Next, the corrected state on the manifold is obtained by retracting the tangent update onto the manifold:
+$$
+    \hat{\mathbf{x}}_{k}^{+} = \varphi(\hat{\mathbf{x}}_{k}^{-}, \boldsymbol{\xi}_k^{+})
+$$
+which ensures that the update remains consistent with the nonlinear geometry of the state space.
+\\ \\
+Finally, the state covariance is updated to reflect the reduced uncertainty after incorporating the measurement:
+$$
+    P_k^{+} = P_k^{-} - K \, S \, K^\top
+$$
+To preserve numerical symmetry and positive semi definiteness, the covariance is symmetrized as
+$$
+    P_k^{+} = \tfrac{1}{2}(P_k^{+} + {P_k^{+}}^\top)
+$$
+
+\paragraph{Summary:} \mbox{}\\[0.5em] \noindent
+At the end of the correction step, the filter outputs the updated mean state $\hat{\mathbf{x}}_{k}^{+}$ and covariance $P_k^{+}$. The state $\hat{\mathbf{x}}_{k}^{+}$ represents the best estimate of the system after incorporating the latest measurement, while the covariance $P_k^{+}$ reflects the remaining uncertainty. Together, they form the posterior estimate that serves as the prior for the next prediction step.
+
+
+
+\subsubsection{Advantages and Practical Aspects}
+The UKF-M offers several advantages over Jacobian based filters like the EKF and ESKF. It removes the need for analytic Jacobians, eliminating discretization and modeling errors while simplifying implementation. The Unscented Transform provides full 2nd order accuracy in mean and covariance propagation, improving stability and consistency under strong nonlinearities.
+\\ \\
+Operating directly on manifolds allows the UKF-M to handle non Euclidean states such as rotations ($\mathrm{SO}(3)$), quaternions ($\mathbb{S}^3$), and rigid body poses ($\mathrm{SE}(3)$) in a unified framework. This ensures consistent attitude updates without small-angle approximations and removes the need for tuning parameters like $\beta$ and $\kappa$, while retaining $\alpha$ to control the sigma point spread in the tangent space. The result is a robust and geometrically correct treatment of uncertainty across mixed Euclidean manifold states.
+\\ \\
+Compared to the standard UKF, the manifold formulation is more general and directly applicable to Lie groups and hybrid models used in robotics and navigation. Its main drawbacks are higher computational cost, since each step evaluates multiple nonlinear models, and the need to tune additional scaling parameters such as $\alpha$. However, with modern embedded hardware and careful parameter selection, these costs are minor compared to the gain in robustness, geometric consistency, and implementation simplicity.
+\\ \\
+In practice, the UKF-M achieves accurate and stable estimation of position and orientation without Jacobians or linearization. Its balance of simplicity, geometric correctness, and numerical stability makes it well suited for nonlinear systems such as SLAM and inertial navigation on the microAmpere ASV, where computational resources are sufficient.

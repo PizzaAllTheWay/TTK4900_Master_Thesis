@@ -1,0 +1,20 @@
+{
+    "editor.wordWrap": "on",
+    "[latex]": {
+        "editor.wordWrap": "on"
+    },
+    "editor.wordWrapColumn": 100, // used if you choose "wordWrapColumn"/"bounded"
+    //"editor.rulers": [100],  // optional guideline
+    
+    "cSpell.words": [
+        "behaviour",
+        "datastructure",
+        "exteroceptive",
+        "Jacobians",
+        "linearities",
+        "linearizes",
+        "Posteriori",
+        "preintegrated",
+        "Preintegration"
+    ],
+}

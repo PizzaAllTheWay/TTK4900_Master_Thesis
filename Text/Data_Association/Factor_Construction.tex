@@ -1,0 +1,13 @@
+\subsection{Factor Construction}
+Whenever data association confirms that a landmark has been observed, the front end updates the factor graph. IMU preintegration is paused, a new pose node is created, and the accumulated IMU factor is added between the new and previous poses. If the landmark is new, the system initializes a fresh landmark node using the current measurement as its prior estimate, which makes the initial factor residual effectively zero at insertion. If the landmark already exists, a new measurement factor is added between the current pose and that landmark, tightening its position estimate. Loop closures follow the same mechanism but link the current pose to older landmarks, enforcing global consistency and correcting long term drift.
+\\ \\
+All landmark updates, new landmarks, re-observations, and loop closures, use the same extended range bearing residual model. The measurement noise is assumed zero mean Gaussian,
+$$
+    \mathbf{n}^i \sim \mathcal{N}(\mathbf{0},\,\mathbf{R}_{z^i})
+$$
+with $\mathbf{R}_{z^i}$ given by the range dependent covariance in \eqref{eq:range-bearing-model-extended-noise}. Under this model, the factor graph residual becomes
+$$
+    r^i = h_{\text{corr}}(\mathbf{x}, m^i) - z_k
+$$
+where $h_{\text{corr}}(\mathbf{x}, m^i)$ is the extended range bearing measurement function from \eqref{eq:range-bearing-model-extended}, incorporating incidence angle corrections and distance dependent noise characteristics, and $z_k$ is the observed landmark measurement. This extended model is used throughout the thesis, while the simpler deterministic form in \eqref{eq:range-bearing-model-deterministic} may be used for debugging and testing. These noisy residuals are inserted directly into backend optimizer of SLAM as standard nonlinear factors, enabling consistent incremental optimization as new scans arrive.
+

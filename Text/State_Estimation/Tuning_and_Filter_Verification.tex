@@ -1,0 +1,71 @@
+\subsection{Tuning and Filter Verification}
+\subsubsection{Debugging}
+When developing and implementing nonlinear state estimators such as the UKF-M, numerous factors can lead to degraded performance or instability. Common sources of error include incorrect model formulations, poor parameter initialization, and improper tuning of process and measurement noise covariances. These issues can cause the filter to become overconfident, overly conservative, or even diverge completely. Therefore, systematic verification and tuning procedures are essential to ensure reliable operation under both simulation and real world conditions.
+
+
+
+\subsubsection{Model Verification and Consistency Checks}
+Before tuning the filter, the correctness of the process model $f(\mathbf{x}, \mathbf{u})$ and measurement model $h(\mathbf{x})$ must be verified. This step ensures that the system dynamics and observation mappings used by the estimator accurately represent the real physical behavior of the vehicle and sensors. Verification is typically performed through simulation or offline replay of recorded sensor data, where predicted quantities are compared with measured ones under both static and dynamic conditions. Discrepancies often indicate modeling errors such as incorrect frame transformations, sign inversions, or unmodeled delays, which must be corrected before filter tuning can be meaningfully performed.  
+\\ \\
+A powerful statistical tool for verifying model consistency is the \textit{``Normalized Innovation Squared''} (NIS) test \cite{sensor_fusion_book}. The NIS evaluates whether the statistical properties of the filters measurement innovations agree with the assumed noise characteristics. For each measurement update, the innovation is computed as
+$$
+    \boldsymbol{\nu}_k = \mathbf{z}_k - h(\hat{\mathbf{x}}_k^-)
+$$
+with associated innovation covariance
+$$
+    S_k = H_k P_k^- H_k^\top + R_k,
+$$
+where $H_k$ is the measurement Jacobian or its sigma point equivalent in the UKF-M framework. The NIS value is then defined as
+$$
+    \epsilon_k = \boldsymbol{\nu}_k^\top S_k^{-1} \boldsymbol{\nu}_k.
+$$
+If the filter is statistically consistent, $\epsilon_k$ should follow a $\chi^2$ distribution with $N$ degrees of freedom, where $N$ is the dimensionality of the measurement vector.  
+\\ \\
+Over a long sequence of measurements, the mean value of the NIS should approximate $N$, and its time history should remain within the confidence bounds of the $\chi^2_N$ distribution. If $\epsilon_k$ frequently exceeds the upper confidence limit, the filter is overconfident, indicating that $Q$ or $R$ are underestimated or the models are inaccurate. Conversely, if $\epsilon_k$ is consistently below the lower limit, the filter is too conservative, suggesting that noise covariances are overestimated.  
+\\ \\
+The NIS test is particularly useful because it provides a quantitative and objective way to verify both model fidelity and covariance tuning without relying on ground truth data. It helps identify whether inconsistencies stem from modeling errors or incorrect noise assumptions and is therefore an essential diagnostic tool during the design and validation of nonlinear estimators such as the UKF-M.
+ 
+
+
+\subsubsection{Tuning of Process and Measurement Covariances}
+The process noise covariance $Q$ and the measurement noise covariance $R$ are two of the most influential parameters governing the performance and stability of any Kalman filter. The matrix $Q$ represents uncertainty in the process model, effectively describing how much trust the filter places in its predicted dynamics. In contrast, $R$ defines the expected noise characteristics of the sensors and determines the degree of confidence placed in new measurements. Together, these matrices control the balance between model prediction and measurement correction.  
+\\ \\
+Selecting $Q$ too small makes the filter overly confident in its process model, leading to poor adaptation when the system encounters unmodeled disturbances or parameter variations. In such cases, the filter may ignore valid sensor information and exhibit lagging or diverging behavior. Conversely, choosing an excessively large $Q$ injects too much uncertainty into the state propagation, resulting in noisy and unstable estimates. A similar trade off exists for the measurement covariance $R$, where smaller values cause the filter to overreact to sensor noise, while larger values reduce update responsiveness and delay corrections.  
+\\ \\
+A practical tuning strategy is to begin with nominal noise levels provided by the sensor manufacturer and gradually adjust them using logged test data. Innovation monitoring can then be used to assess whether the residuals $\boldsymbol{\nu}_k$ are statistically consistent with their predicted covariance $S_k$. If innovations are systematically larger than expected, $Q$ or $R$ should be increased. If they are consistently smaller, these values can be reduced. This empirical process is often repeated iteratively until the NIS statistic converges toward its theoretical expectation.  
+\\ \\
+In practice, final tuning often reflects a compromise between theoretical accuracy and robustness. Environmental effects, unmodeled dynamics, and sensor degradation can all influence the optimal noise parameters. For this reason, the selected $Q$ and $R$ matrices are sometimes treated as design parameters rather than fixed physical quantities, optimized for overall stability, smoothness, and performance under representative operating conditions.
+
+
+
+\subsubsection{Empirical Tuning Procedure}
+A practical way to tune and verify the filter performance is to use recorded test data from the target platform. The process and measurement noise covariances, $Q$ and $R$, can be iteratively adjusted until the estimator produces stable and realistic results. Since the microAmpere ASV platform runs on a ROS2 based system, the available tooling such as \textit{``ROS bags''} provides a convenient way to record, replay, and analyze sensor data offline. This allows testing the estimator repeatedly under identical conditions and evaluating its behavior during different maneuvers such as straight motion, turns, and accelerations.  
+\\ \\
+During this tuning phase, the consistency of the filter can be evaluated by observing the innovation covariance $S_k$ and NIS. This data help determine whether the chosen $Q$ and $R$ values properly represent the actual system and sensor noise. If the NIS frequently exceeds its expected bounds, the process or measurement noise is likely underestimated, while values that are consistently low indicate an overly conservative setup. By iteratively adjusting the noise parameters based on these observations, a statistically consistent and well-behaved estimator configuration can be achieved.
+
+
+
+\subsubsection{Innovation Monitoring and Outlier Rejection}
+Some extra aspects to consider when designing and testing the filter include how it handles measurement outliers and how its performance is monitored over time. Sensor data can occasionally contain large errors caused by multipath effects, dropouts, or temporary disturbances. Residual gating helps detect and reject such outliers by computing the Mahalanobis distance of the innovation and comparing it against a threshold from the $\chi^2$ distribution. This ensures that only statistically consistent measurements are accepted during the update step, improving overall filter stability and fault tolerance.  
+\\ \\
+The Mahalanobis distance is computed as
+$$
+    d^2 = \boldsymbol{\nu}^\top S^{-1} \boldsymbol{\nu}
+$$
+where $\boldsymbol{\nu}$ is the innovation and $S$ its covariance. Note that the Mahalanobis distance is mathematically identical to the NIS test, the difference being in context. While NIS is typically used for offline filter consistency analysis, the Mahalanobis distance is applied online for real-time outlier detection. If the computed distance $d^2$ becomes larger than a predefined threshold $\chi^2_{\text{threshold}}$, he measurement is considered statistically inconsistent and is therefore rejected as an outlier (ie $\text{if}: \, d^2 > \chi^2_{\text{threshold}} \rightarrow \text{Outlier!}$). Conversely, if $d^2 \le \chi^2_{\text{threshold}}$, the measurement is accepted and used in the update step. This simple gating procedure is commonly used in practical filtering systems, as it provides a statistically grounded and computationally lightweight method for maintaining estimator robustness in the presence of faulty or inconsistent sensor data.
+\\ \\
+Innovation monitoring is also a useful tool for evaluating estimator behavior during operation. By observing the innovation sequence $\boldsymbol{\nu}_k$ and its covariance $S_k$, it becomes possible to identify bias, drift, or incorrect noise assumptions in the models. In more advanced cases, adaptive tuning methods can be used to adjust $Q$ and $R$ dynamically in response to changing conditions, such as varying motion regimes or sensor degradation, helping maintain consistent and reliable filter performance without manual retuning.
+
+
+
+\subsubsection{Final State Definition and Conclusion}
+The final estimator state used in this work is defined as
+$$
+    \mathbf{x} =
+    \begin{bmatrix}
+        \mathbf{p}_{b/O}^{n} & \mathbf{v}_{b/O}^{n} & \mathbf{q} & \mathbf{a}_b & \mathbf{\omega}_b
+    \end{bmatrix}^\top
+$$
+where position, velocity, and attitude are expressed in the NED frame, and accelerometer and gyroscope biases evolve in the Body frame. This structure provides a compact yet complete representation of the vehicle motion and sensor dynamics.  
+\\ \\
+Overall, the Manifold based Unscented Kalman Filter (UKF-M) appears to be the most suitable framework for this project, offering a good compromise between numerical stability, modeling accuracy, and implementation simplicity. It eliminates the need for Jacobians while preserving geometric consistency for quaternion based attitude estimation.

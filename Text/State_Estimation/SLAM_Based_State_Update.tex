@@ -1,0 +1,19 @@
+\subsection{SLAM based State Update}
+The SLAM based state update provides globally consistent pose corrections to the state estimation filter, counteracting drift accumulated during inertial propagation. While the IMU supplies high rate relative motion updates, it lacks an absolute reference, causing position and attitude errors to increase over time. The SLAM output introduces an external correction derived from landmark observations, delivering drift free pose estimates in the navigation frame.  
+\\ \\
+In cases where GNSS coverage is limited or temporarily unavailable, the SLAM update serves as an alternative absolute reference, maintaining consistent localization by leveraging environmental features. This allows the vessel to preserve accurate navigation performance even in GNSS denied conditions.
+\\ \\
+The SLAM system provides the estimated states $\mathbf{X}$, $\mathbf{V}$, $\mathbf{R}$, $\mathbf{B}$, and $\mathbf{P}$, corresponding to position, velocity, rotation, IMU bias, and the associated pose covariance. The position and velocity are already expressed in the NED frame and can be directly used in the update step. The bias terms are also compatible, as they represent the same accelerometer and gyroscope bias components used by the state estimation filter. The covariance $\mathbf{P}$ describes the SLAM pose uncertainty and is used as the measurement noise covariance during the update. 
+\\ \\
+The only required adjustment concerns the attitude representation. The state estimation filter expresses orientation as a unit quaternion $\mathbf{q}$, while the SLAM system provides a rotation matrix $R_{b}^{n}$ on $SO(3)$. To maintain consistency, the quaternion is converted to its equivalent rotation matrix form $R(\mathbf{q})$ before the update. This ensures both systems operate in the same rotational space.  
+\\ \\
+The SLAM update step is then straightforward. The measurement model is defined as
+$$
+    h(\mathbf{x}) = \mathbf{x}
+$$
+with the measurement noise covariance taken directly from the SLAM pose uncertainty,
+$$
+    \mathbf{R} = \mathbf{P}_{SLAM} = \mathbf{P}_{xx}
+$$
+If the Jacobian of the measurement model is required, it simplifies to $H = I$. This makes the correction step efficient and direct, allowing the global SLAM pose to realign the estimated navigation state and compensate for accumulated drift with minimal computational cost.
+

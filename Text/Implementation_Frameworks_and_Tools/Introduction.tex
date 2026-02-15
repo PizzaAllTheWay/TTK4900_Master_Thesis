@@ -1,0 +1,9 @@
+\subsection{Introduction}
+Developing a complete SLAM and state estimation system entirely from scratch is both time consuming and technically challenging. Each subsystem, from sensor fusion and motion estimation to optimization and data association requires extensive mathematical formulation, careful numerical implementation, and detailed validation. Reimplementing these complex components not only slows progress but also increases the risk of introducing subtle numerical errors and inconsistencies between modules.  
+\\ \\
+To mitigate these challenges and focus on higher level research goals, this work builds upon established open source frameworks that provide reliable, modular, and well tested implementations of key algorithms. These frameworks form the foundation of modern robotics software stacks, allowing efficient integration of sensors, state estimators, optimizers, and visualization tools.  
+\\ \\
+ROS2 is used as the central middleware for data handling, real-time communication, and debugging through tools such as RViz2 and rqt. The CAOR-MINES ParisTech UKF-M library provides a robust foundation for nonlinear state estimation and multi sensor fusion. OpenCV is utilized for image processing, feature extraction, and local map generation, forming the core of the visual and probabilistic perception pipeline. GTSAM handles factor graph construction, preintegration, and optimization, while MRPT supports data association and perception modules for the SLAM front-end.
+\\ \\
+All selected frameworks are open source and distributed under permissive research oriented licenses, ensuring that they can be freely used, modified, and integrated into this work while maintaining transparency and reproducibility.
+

@@ -1,0 +1,26 @@
+\subsection{Loop Closure and Matching}
+\subsubsection{The Problem of Loop Closure}
+Running full global JCBB every frame is infeasible because its complexity and the required covariance blocks $P_{xx},P_{xL},P_{LL}$ would overwhelm the SLAM budget. The system therefore separates \emph{``local''} DA (frame to frame) from \emph{``global''} DA (loop closure). Both begin with gating, local gating is tight and yields only a few candidates, while global gating is wider and produces many, requiring full joint compatibility. JCBB then runs either in lightweight form using only $P_{xx}$ for local DA or in full form using $P_{xx},P_{xL},P_{LL}$ during loop closure. Since loop closures are rare, global JCBB is triggered only occasionally and does not break real-time performance.
+\\ \\
+The remaining question is simply how the system knows when a loop closure might be happening. Global JCBB cannot be used to detect this, because that would defeat the whole purpose of avoiding its heavy cost. Instead the system needs a fast and approximate hint that the robot might be revisiting an old area, here a lightweight descriptor based matching algorithms is chosen as each landmarks has its own descriptor already attached.
+
+\subsubsection{Descriptor Based Loop Closure Matching}
+Before any global DA can be attempted, the system compares the newly observed sonar landmarks against stored descriptors from older parts of the map. Each 2D sonar landmark is assigned both weak and strong descriptors. Weak descriptors are used first with very relaxed thresholds, pruning only the largest outliers. Strong descriptors are used next to filter the result down to a small number of plausible candidates. It is important to note that this step does not determine the data association, it merely determines whether a loop closure might exist. If no descriptors match at all, then the landmarks are judged unique enough that only local DA is required. If descriptor similarity rises above a threshold, then a loop closure is possible, and global DA is triggered.
+\\ \\
+Descriptor similarity is computed using nearest neighbour search in descriptor space (not the geometric NN used earlier for DA). This search is implemented with a KD-tree backend, with FLANN providing fast comparison across the stored landmark descriptors. Matching returns a similarity score, if one match stands out clearly above the rest or exceeds a fixed threshold, the system flags a loop closure candidate. A periodic fallback trigger (eks every 50 frames) is also used as a safety net to avoid missing loop closures that generate weak descriptor responses.
+
+\subsubsection{Local vs Global Loop Closure Decisions}
+To avoid meaningless self matching, the system maintains a short sliding window of recent submaps (eks the last 5 frames). These are excluded from global matching, since they belong to the current local area and should be handled only by local DA. The loop closure search is therefore always performed against map regions older than this window. With this rule, the loop closure decision becomes:
+\begin{enumerate}
+    \item Compute descriptor similarity between the new sonar frame and all older submaps beyond the local window
+    \item If similarity exceeds the threshold, trigger global gating followed by full JCBB
+    \item Otherwise, perform local gating and run JCBB in local mode with only $P_{xx}$
+\end{enumerate}
+This design ensures that global DA runs only when necessary, keeping the system real time while still catching true loop closures reliably.
+
+\subsubsection{Landmark Revalidation}
+When an old landmark is successfully reobserved and verified by global JCBB, it is revalidated and treated as a fresh observation. Its ``age'' in the map is reset so that it again participates in local DA, ensuring that long term drift does not push repeated landmarks out of the local mapping window.
+\\ \\
+This combination, fast descriptor matching, selective global DA, and revalidation, provides in theory a more practical and efficient loop closure mechanism while maintaining the robustness guarantees of full JCBB exactly where it matters.
+
+

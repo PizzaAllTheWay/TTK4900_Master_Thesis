@@ -1,0 +1,21 @@
+\subsection{GNSS Factor}
+The GNSS factor represents a direct measurement constraint that links the estimated vehicle pose to the absolute position and heading obtained from the dual-antenna GNSS receiver. Unlike odometry or landmark based factors, which require preintegration or feature association, the GNSS factor can be constructed directly from the raw measurements with minimal preprocessing, classifying it as a \textit{direct factor}.
+\\ \\
+Following the formulation of unary factors in GTSAM tutorial on Factor Graphs \cite{GNSS_Factor}, the GNSS factor can be expressed as a probabilistic constraint between the estimated navigation state and the measured quantities in the NED frame:
+$$
+    \mathbf{r}_{GNSS} = \mathbf{z}_{GNSS} - h(\mathbf{x})
+$$
+where $\mathbf{z}_{GNSS}$ is the measurement vector containing the absolute position and yaw angle, and $h(\mathbf{x})$ is the nonlinear measurement model defined in Equation \ref{eq:aiding-measurement-model}. The corresponding measurement noise is modeled as a zero mean Gaussian:
+$$
+    \mathbf{r}_{GNSS} \sim \mathcal{N}(0, \mathbf{R}_{GNSS})
+$$
+The corresponding measurement noise is modeled as a zero mean Gaussian with covariance $\mathbf{R}_{\text{GNSS}}$, as defined in Equation \ref{eq:aiding-measurement-model-noise}. This covariance represents the uncertainty associated with the GNSS aiding measurements, where the first three terms correspond to positional uncertainty in the NED frame, and the fourth term describes the yaw variance derived from the dual antenna baseline configuration.  
+\\ \\
+In the factor graph framework, the GNSS observation is implemented as a unary factor connected to the current pose node, contributing a residual term of the form
+$$
+    \| \mathbf{z}_{GNSS} - h(\mathbf{x}) \|^2_{\mathbf{R}_{GNSS}^{-1}}
+$$
+This factor is added incrementally at each GNSS update epoch using solvers such as iSAM2, which re-linearize only the affected local variables within the corresponding clique \cite{iSAM2_paper}. These optimization methods, including iSAM2 and batch solvers, are discussed in more detail later in the \textit{``Optimizers''} chapter, where their operation and impact on factor graph efficiency are explained.
+\\ \\
+By incorporating both position and yaw, the GNSS factor provides a global reference that anchors the estimated trajectory in the navigation frame and stabilizes heading drift over time. For the microAmpere ASV, this dual constraint serves as a reliable absolute reference that complements the relative motion information derived from IMU preintegration, ensuring globally consistent and drift free navigation.
+

@@ -1,0 +1,12 @@
+\subsection{Sonar Fundamentals}
+A sonar system consists of one or more transducers made from piezoelectric ceramic materials. When an electrical signal is applied, the ceramic deforms and produces a mechanical vibration that emits an acoustic wave into the water. Conversely, when an incoming acoustic wave reaches the transducer, the ceramic deforms and generates a small electrical signal. This signal is then amplified and digitized by the receiver electronics. The process is simple at its core, electrical energy becomes sound, sound interacts with the environment, and the returning sound becomes an electrical signal again.
+\\ \\
+Modern sonar systems emit short pulses (chirps) whose frequency content is optimized for resolution and range. High frequencies provide fine detail but attenuate faster. Lower frequencies travel farther but offer lower resolution. Side scan sonar typically uses high frequency chirps (hundreds of kHz) to produce detailed seafloor imagery. The transmitter and receiver assemblies are arranged so that each ping illuminates a narrow swath of the seabed, and the received intensity profile forms a single scan line. By stacking these scan lines over time as the vessel moves, the system produces a 2D representation of the seafloor.
+\\ \\
+Sonar measurements are inherently sensitive to orientation, altitude, and motion of the platform. Pitch and roll change the insonified region, while altitude affects the projection from slant range to true ground range. These effects create distortions that must be corrected before any mapping or SLAM step, which is why the early parts of the SLAM data processing pipeline apply normalization and geometric corrections to create stable and accurate seafloor maps.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\linewidth]{Pictures/Sonar_Theory/Sonar_Fundamentals/Piezoelectric_Transducer.jpg}
+    \caption{Picture shows construction of a piezoelectric ceramic transducer. Applying an electrical voltage causes the material to deform and generate acoustic vibrations, while incoming pressure variations induce mechanical deformation that produces a measurable electrical signal. These low voltage signals are later amplified and processed by the sonar electronics.\textsuperscript{\cite{piezoelectric_transducer}}}
+    \label{fig:sonar-theory-sonar-piezoelectric-transducer}
+\end{figure}

@@ -1,0 +1,59 @@
+\documentclass{article}
+
+% Use custom style
+\usepackage{mystyle}
+
+% Use Reference table
+\addbibresource{references.bib}
+
+% Use Acronym table
+\loadglsentries{glossary.tex}
+
+% Use title
+\title{TTK4551 Technical Cybernetics - Specialization Project: \\ \noindent Graph based SLAM for Autonomous Navigation using Side Scan Sonar on the microAmpere ASV}
+\author{Martynas Smilingis}
+\date{September 2025}
+
+% Document (START) ==================================================
+\begin{document}
+
+% Generated title
+\maketitle
+
+% Generate content page
+\newpage
+% Tabe of context
+% Teporarily group table of context to make its links black instead of like the rest of the text where it is blue
+\begingroup
+    \hypersetup{linkcolor=black}
+    \tableofcontents
+\endgroup
+\newpage
+
+% Generate Acronym table and include all main glossary entries even if unused
+\printglossary[type=\acronymtype, style=acronymStyle]
+\printglossary 
+\glsaddallunused[\acronymtype] \clearpage
+
+% Main meat n potaters of the report
+\input{Text/Introduction/main.tex} \clearpage
+\input{Text/Side_Scan_Sonar_SLAM_Architecture/main.tex} \clearpage
+\input{Text/Sonar_Theory/main.tex} \clearpage
+\input{Text/Hardware/main.tex} \clearpage
+\input{Text/System_Modeling/main.tex} \clearpage
+\input{Text/State_Estimation/main.tex} \clearpage
+\input{Text/Preintegration/main.tex} \clearpage
+\input{Text/Direct_Factors/main.tex} \clearpage
+\input{Text/Local_Map_Generation/main.tex} \clearpage
+\input{Text/Data_Association/main.tex} \clearpage
+\input{Text/Optimizers/main.tex} \clearpage
+\input{Text/Global_Map_and_Trajectory/main.tex} \clearpage
+\input{Text/Implementation_Frameworks_and_Tools/main.tex} \clearpage
+
+% Refrences
+\newpage
+\printbibliography
+
+\end{document}
+% Document (STSTOPART) ==================================================
+

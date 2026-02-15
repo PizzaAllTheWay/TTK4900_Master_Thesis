@@ -1,0 +1,27 @@
+\subsection{Introduction}
+Estimation theory provides the mathematical foundation for inferring unknown quantities from noisy sensor data. In general, two main paradigms are used in estimation and signal processing, the Bayesian and the Frequency domain approaches. Each framework offers different strengths and assumptions depending on the type of system being analyzed.  
+\\ \\
+The frequency domain approach is commonly applied in classical signal processing, where the primary goal is to extract information from stationary or periodic signals. Techniques such as spectral analysis, transfer function estimation, and classical filtering operate efficiently when system dynamics are linear and time invariant. However, these methods struggle to represent the nonlinear, time varying behavior typical of real world dynamic systems such as autonomous vehicles or navigation platforms. Their focus on steady state frequency content limits their ability to perform recursive state estimation in systems subject to stochastic disturbances and nonlinear motion.  
+\\ \\
+The Bayesian approach, in contrast, provides a probabilistic framework for representing and updating uncertainty over time. Instead of working in the frequency domain, Bayesian estimation directly models the probability distribution of the system state given all available measurements. This allows the estimation process to incorporate both process dynamics and measurement models, enabling consistent fusion of heterogeneous sensor data. The Bayesian framework forms the foundation for modern state estimation algorithms such as the Kalman Filter, Extended Kalman Filter, and Unscented Kalman Filter.  
+\\ \\
+The core idea of Bayesian estimation is recursive probabilistic inference. At each time step, the state distribution is first \textit{``predicted''} forward in time using the motion model, and then \textit{``corrected''} using the latest aiding sensor measurements. This recursive structure enables efficient real-time updates of the system state without requiring storage of the entire measurement history. 
+\\ \\
+The recursive form of the Bayes filter can be expressed in two steps \cite{sensor_fusion_book}. First, the \textit{``prediction step''} propagates the state distribution forward in time:
+$$
+    p(\mathbf{x}_k | \mathbf{z}_{1:k-1}) = \int p(\mathbf{x}_k | \mathbf{x}_{k-1})\,p(\mathbf{x}_{k-1} | \mathbf{z}_{1:k-1})\,d\mathbf{x}_{k-1}
+$$
+Then, the \textit{``update step''} incorporates the new measurement:
+$$
+    p(\mathbf{x}_k | \mathbf{z}_{1:k}) =
+    \frac{p(\mathbf{z}_k | \mathbf{x}_k)\,p(\mathbf{x}_k | \mathbf{z}_{1:k-1})}
+    {\int p(\mathbf{z}_k | \mathbf{x}_k)\,p(\mathbf{x}_k | \mathbf{z}_{1:k-1})\,d\mathbf{x}_k}
+$$
+Together, these equations define the recursive Bayesian estimation framework used throughout this thesis.
+\\ \\
+In summary, the Bayesian paradigm offers a flexible and mathematically consistent method for estimating nonlinear system states under uncertainty, making it particularly suitable for navigation and sensor fusion applications. The frequency domain approach remains valuable for analyzing stationary signals or identifying system dynamics, but it is less effective for recursive, model-based estimation of dynamic processes.  
+\\ \\
+The theoretical concepts and formulations presented in this section are based on the work by Edmund Brekke in \textit{``Fundamentals of Sensor Fusion''} \cite{sensor_fusion_book}. The discussion and implementations of the Unscented Kalman Filter and its manifold based extension are supported by the research papers \cite{ukf} and \cite{ukf_manifold_code}.
+
+
+

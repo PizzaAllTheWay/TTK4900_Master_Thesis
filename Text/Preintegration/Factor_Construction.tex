@@ -1,0 +1,53 @@
+\subsection{Factor Construction}
+\subsubsection{Factor Graph Formulation}
+The optimizer operates on a factor graph representation of the estimation problem, where each node corresponds to a keyframe state and each edge, or factor, represents a probabilistic constraint derived from sensor measurements. For the preintegration framework to function within this optimization structure, the outputs from the preintegration algorithm must be converted into factors that connect consecutive keyframes. These factors define how motion and bias estimates evolve between time steps and provide the necessary mathematical relationships that the optimizer uses to minimize overall error.  
+\\ \\
+The factor graph formulation is crucial because it transforms the continuous time IMU dynamics into discrete, optimization ready constraints. Each factor contributes a residual that measures the discrepancy between the predicted and observed relationships of connected keyframes. During optimization, all residuals are jointly minimized to produce the most consistent estimate of both motion and bias states over time.  
+\\ \\
+In the context of IMU preintegration, two distinct but related factors are constructed. The first one is the IMU preintegration factor, which captures the relative motion between keyframes using the preintegrated measurements. The second one is the bias evolution factor, which models the slow stochastic drift of accelerometer and gyroscope biases. Together, these form the complete inertial constraint within the factor graph, allowing the optimizer to refine all state and bias variables simultaneously and propagate the optimal corrected state back into the next preintegration cycle.  
+\\ \\
+Once the optimization converges, the updated states $(R_j^{\text{opt}}, v_j^{\text{opt}}, p_j^{\text{opt}})$ and biases $B_j^{\text{opt}}$ are extracted from the graph and used to initialize the next preintegration interval $(t_j, t_{j+1}]$ and then constructing the factors again. This recursive update maintains temporal consistency between keyframes and ensures that each new preintegration step starts from the best available estimate.
+
+
+
+\subsubsection{IMU Preintegration Factor}
+This factor represents the relative motion constraint between keyframes $i$ and $j$ based on all IMU data integrated over the interval $(t_i, t_j]$. It enforces consistency between the estimated states $(R_i, v_i, p_i)$ and $(R_j, v_j, p_j)$ and the preintegrated measurements $(\Delta R_{ij}^{*}, \Delta v_{ij}^{*}, \Delta p_{ij}^{*})$ computed previously.  
+\\ \\
+Here, $R_i$, $v_i$, and $p_i$ correspond to the optimized state estimates from the previous keyframe, denoted as $R_i^{\text{opt}}$, $v_i^{\text{opt}}$, and $p_i^{\text{opt}}$, provided by the backend optimizer. Similarly, $R_j$, $v_j$, and $p_j$ represent the current state estimates under optimization, denoted as $\hat{R}_j$, $\hat{v}_j$, and $\hat{p}_j$. The preintegrated quantities $(\Delta R_{ij}^{*}, \Delta v_{ij}^{*}, \Delta p_{ij}^{*})$ are fixed measurements obtained from the preintegration process and serve as the relative motion observation linking these two states.
+\\ \\
+The residual formulation is given as
+$$
+    r_{\text{IMU}}^{ij} =
+    \begin{bmatrix}
+        \log((\Delta R_{ij}^{*})^\top R_i^\top R_j) \\
+        R_i^\top (v_j - v_i - g\Delta t_{ij}) - \Delta v_{ij}^{*} \\
+        R_i^\top (p_j - p_i - v_i \Delta t_{ij} - \tfrac{1}{2} g \Delta t_{ij}^2) - \Delta p_{ij}^{*}
+    \end{bmatrix}
+$$
+Each residual term penalizes deviation from the preintegrated motion predicted by the IMU. The factor is weighted by the corresponding information matrix $\Lambda_{IMU,ij} = P_{IMU,ij}^{-1}$, defining its confidence based on accumulated IMU noise. 
+\\ \\
+This single factor efficiently summarizes hundreds of raw IMU readings, maintaining accuracy while drastically reducing computational cost.
+
+
+
+\subsubsection{Bias Evolution Factor}
+To maintain bias consistency between keyframes, a separate factor enforces smooth bias evolution according to the Brownian motion model.  
+\\ \\
+Here, $B_i$ represents the optimized bias estimate from the previous keyframe, denoted as $B_i^{\text{opt}} = [\mathbf{a}_{b,i}^{\text{opt}},\, \boldsymbol{\omega}_{b,i}^{\text{opt}}]^\top$, while $B_j$ corresponds to the current bias state being optimized, denoted as $\hat{B}_j = [\hat{\mathbf{a}}_{b,j},\, \hat{\boldsymbol{\omega}}_{b,j}]^\top$.  
+\\ \\
+The residual formulation is given as
+$$
+    r_{\text{b}}^{ij} = B_j - B_i
+$$
+weighted by the bias information matrix $\Lambda_{b,ij} = P_{b,ij}^{-1}$.  
+\\ \\
+This factor captures the slow, random drift of gyroscope and accelerometer biases over time and ensures stable long-term estimation.  
+
+
+
+\subsubsection{Preintegration Trigger and Factor Connectivity}
+IMU preintegration operates continuously between discrete keyframe events, such as GNSS updates or landmark detections. A new odometry pose is created whenever such an event occurs. During the interval between two events $(t_i, t_j]$, all incoming IMU measurements are accumulated and preintegrated to form a compact relative motion constraint. When the event is triggered, preintegration stops, a new pose node $j$ is created, and a preintegrated IMU factor is added between the previous and current pose nodes $(i,j)$.  
+\\ \\
+All other sensor measurements that arrived within this interval such as GNSS positions, landmark detections, or visual observations are attached to the new pose node as unary factors, each providing an independent residual and noise model. This approach ensures that all sensor data are temporally aligned to the event that created the keyframe while keeping the number of poses in the graph minimal.  
+\\ \\
+The bias state is connected through its own dedicated bias evolution factor, which links the bias variable $B_i$ of the previous keyframe to the new bias variable $B_j$ at the current keyframe. This maintains smooth bias propagation across time and ensures that both the motion (IMU preintegration) and bias drift are jointly optimized. The preintegrated IMU factor depends directly on both pose and bias states, meaning that changes in $B_i$ and $B_j$ influence the predicted motion residual. Together, the IMU preintegration factor, bias evolution factor, and sensor measurement factors form a fully coupled constraint system that updates pose, velocity, and bias consistently at each event driven keyframe.

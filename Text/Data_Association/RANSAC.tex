@@ -1,0 +1,10 @@
+\subsection{RANSAC}
+RANSAC (Random Sample Consensus) is a robust model fitting algorithm designed to identify inliers within noisy or partially corrupted data. The method repeatedly samples small random subsets of measurements, fits a simple geometric model to each subset, and evaluates how many remaining points agree with that model within a tolerance. After many iterations, the model with the largest consensus set is selected, and all outliers are discarded. Because RANSAC optimizes agreement rather than likelihood, it remains reliable even when a large portion of the measurements are outliers.
+\\ \\
+In classical vision and LiDAR SLAM, RANSAC is widely used to filter correspondence pairs before estimating geometric transformations between frames. Examples include fitting a homography between two camera images or estimating a rigid body transformation between two point clouds. The algorithm ensures that only geometrically consistent matches influence the pose estimate, while spurious or mismatched features are rejected automatically.
+\\ \\
+For landmark based SLAM with sparse sonar detections, RANSAC is far less suitable. Side scan sonar landmarks are highly viewpoint dependent, affected by shadows and intensity distortions, and lack the stable geometric structure (corners, edges, planes) that camera or LiDAR features exhibit. This makes it difficult to define a reliable geometric model that RANSAC can fit. As a result, applying RANSAC at the landmark association level offers little robustness and often produces unstable results unless heavy preprocessing is used.
+\\ \\
+RANSAC remains a powerful tool for rigid geometric fitting, but due to the weak and ambiguous geometric structure of sonar landmarks, it is not used for data association in this thesis.
+
+

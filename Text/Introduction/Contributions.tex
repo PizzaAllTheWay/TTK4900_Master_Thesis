@@ -1,0 +1,10 @@
+\subsection{Contributions}
+The main contributions of this work are:
+\begin{itemize}
+    \item \textbf{A streamlined, real-time capable SSS SLAM pipeline:} A complete implementation of core components from previous work, optimized for speed, modularity, and embedded deployment.
+    \item \textbf{Improved feature extraction and landmark generation:} New processing techniques using adaptive thresholding, morphological filtering, and robust descriptor assignment for stable, repeatable landmark detection.
+    \item \textbf{A 2 layer data association system:} Combining local JCBB matching with global descriptor based loop closure proposals to maintain robustness while remaining computationally efficient.
+    \item \textbf{Integration of IMU preintegration and factor graph optimization:} Leveraging GTSAM's iSAM2 for incremental smoothing, enabling consistent trajectory and map estimation over long missions.
+    \item \textbf{Embedded integration on microAmpere ASV:} Porting, packaging, and preparing the pipeline for real-time operation on distributed ROS2 based onboard compute systems.
+\end{itemize}
+Together, these contributions support practical deployment of side scan sonar SLAM (SSS SLAM) on autonomous surface vessels by providing a clear architecture and a real-time embedded implementation

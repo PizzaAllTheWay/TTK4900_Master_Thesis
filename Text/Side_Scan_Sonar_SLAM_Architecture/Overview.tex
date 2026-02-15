@@ -1,0 +1,17 @@
+\subsection{Overview}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.0\linewidth]{Pictures/Side_Scan_Sonar_SLAM_Architecture/Overview/Simplified.png}
+    \caption{A simplified high level overview of the Side Scan Sonar Simultaneous Localization And Mapping (SSS SLAM) pipeline, from raw hardware inputs to the final global map and trajectory estimate.}
+    \label{fig:SSS-SLAM-Architecture-Simplified}
+\end{figure}
+\noindent
+The simplified architecture in Figure \ref{fig:SSS-SLAM-Architecture-Simplified} shows the core flow of the system, sensor hardware produces raw data, this data is processed, the Simultaneous Localization And Mapping (SLAM) module estimates the vehicle motion and environment, and the final output becomes a global map with a trajectory. This overview hides all lower level details and is meant only to illustrate how the major components fit together at a high level.
+\\ \\
+The SLAM formulation used in this work is landmark based. Many SLAM variants exist, such as EKF-SLAM, dense mapping, or direct scan matching methods, but landmark based SLAM fits naturally with the idea of building a map composed of repeatable features. Since the end goal is to create a global map that is consistent over long distances, using distinct landmark like structures as constraints provides strong geometric information and reduces drift. This strategy also aligns well with modern graph based optimization, where each landmark observation becomes a factor that ties the trajectory together.
+\\ \\
+The general plan is therefore straightforward, extract useful information from the sonar data, convert it into a set of spatial observations, and feed these into a SLAM back end that optimizes both the trajectory and the map. This approach is chosen because it balances robustness, computational efficiency, and the ability to handle loop closures, which are essential for long duration mapping missions.
+\\ \\
+This subsection provides the highest level overview of the entire thesis. The following chapters expand each of these blocks in detail, describing the design choices, algorithms, and reasoning behind the final SLAM architecture. Understanding this simple structure is helpful before diving into the more technical parts, as it shows how all components connect from raw input to the final map and trajectory. The next subsection offers a slightly more detailed overview of the full system, which is useful to keep in mind when exploring the individual modules and how they interact throughout the pipeline.
+
+

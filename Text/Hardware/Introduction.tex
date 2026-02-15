@@ -1,0 +1,9 @@
+\subsection{Introduction}
+The hardware used in this thesis forms the physical foundation for deploying and evaluating the side-scan sonar SLAM system on the microAmpere ASV. Since all SLAM components, from state estimation to mapping and optimization, depend directly on sensor performance, timing accuracy, and onboard compute capability, understanding the underlying hardware is essential for interpreting the systems overall constraints and behavior.
+\\ \\
+This chapter introduces the microAmpere ASV platform and highlights the elements most relevant for Side Scan Sonar SLAM (SSS SLAM) integration. The vessels distributed computing architecture, built around synchronized embedded systems, enables real-time processing of inertial, GNSS, and sonar data. Accurate timing, reliable networking, and deterministic data pathways are critical for fusing measurements into a coherent SLAM pipeline, and these characteristics are outlined here to set the operational context.
+\\ \\
+The chapter also presents the sensor suite used for navigation and mapping. The IMU, GNSS, and side scan sonar define the primary data sources for the SLAM algorithm, each contributing complementary information about motion or the external environment. Their placement, interfaces, and data rates determine how the system must model, synchronize, and process measurements later in the pipeline.
+\\ \\
+Finally, the hardware introduction positions the microAmpere platform within the broader flow of the thesis. The design choices, limitations, and capabilities described here provide the foundation for the following chapters on system modeling, state estimation, sonar processing, and full SLAM architecture. By establishing the practical constraints early, the thesis ensures that the proposed SLAM system is aligned with the realities of embedded marine robotics.
+

@@ -1,0 +1,8 @@
+\subsection{Introduction}
+The global map and trajectory view serves as the final visualization layer of the Side Scan SOnar SLAM (SSS SLAM) pipeline. As the optimizer produces updated pose estimates, the system incrementally renders an expanding global seafloor map in semi real time. This provides an intuitive and practical way to inspect mapping quality, observe drift behaviour, validate loop closures, and debug the entire pipeline as the mission unfolds. Beyond debugging, the global map becomes a valuable product for post processing, mission analysis, and integration into higher level autonomy modules such as collision avoidance, risk assessment, and future path planning. Since all computationally expensive steps, normalization, projection, probabilistic interpolation, and stitching, have already been handled in the local map generation stage, the global mapping layer is designed to remain lightweight and efficient. Its purpose is not to reinterpret or re-estimate sonar data, but simply to accumulate the already processed local Cartesian maps into a coherent global frame and display them in a stable, continuous, easy to examine form.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.0\linewidth]{Pictures/Global_Map_And_Trajectory/Introduction/Global_Map_and_Trajectory_Example.png}
+    \caption{Example of a 2D global map reconstructed from LiDAR scans, with the robots estimated trajectory overlaid.\textsuperscript{\cite{lobal_map_and_trajectory_example}}}
+    \label{fig:global-map-and-trajectory-example}
+\end{figure}

@@ -1,0 +1,18 @@
+\subsection{ROS2 Middleware Framework}
+The Robot Operating System 2 (ROS2) serves as the core communication and integration framework in this work. It provides a distributed, real-time capable middleware that enables modular data flow between sensors, estimators, and control systems. ROS2 is built on the Data Distribution Service (DDS) standard, which allows decentralized peer-to-peer communication without relying on a central master node. This ensures robust and scalable operation across multiple computing units, a key requirement for autonomous platforms like the microAmpere ASV.  
+\\ \\
+ROS2 organizes functionality in layered components, as illustrated in Figure \ref{fig:ros2-overview}. The operating system layer abstracts the underlying hardware and supports cross platform execution on Linux, Windows, and macOS. The ROS Middleware (RMW) layer implements DDS, providing reliable message delivery and configurable Quality of Service (QoS) policies for different data types. The Client Library (RCL) defines node behavior through APIs such as \texttt{rclcpp} (C++) and \texttt{rclpy} (Python), while the user code layer contains the application specific nodes developed for sensing, estimation, and control tasks.  
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\linewidth]{Pictures/Implementation_Frameworks_And_Tools/ROS2/Layers.png}
+    \caption{Layered architecture of ROS2 showing the relation between the OS, middleware, client library, and user application layers.\textsuperscript{\cite{ros2_layers}}}
+    \label{fig:ros2-overview}
+\end{figure}
+\noindent
+Data exchange in ROS2 follows the publish-subscribe paradigm. Each node can publish messages to a topic or subscribe to existing ones, allowing asynchronous and decoupled communication. For request-response operations, ROS2 uses services, while longer, goal driven interactions use actions. These mechanisms enable efficient communication between high rate data streams (eks, IMU, GNSS) and low frequency updates (eks, mission control). The middleware handles discovery, serialization, and message transport automatically, while QoS settings allow fine-grained control of reliability, latency, and timing behavior.  
+\\ \\
+ROS2 also provides integrated tools for debugging, visualization, and development. Logging utilities, introspection tools, and visualization frameworks such as RViz2 and rqt enable real-time monitoring of system states, sensor topics, and algorithmic outputs. These features are essential for testing, validation, and troubleshooting during SLAM and navigation experiments.  
+\\ \\
+ROS2 modular design allows independent packaging and deployment of nodes, simplifying updates and debugging. Python based launch files handle configuration and startup, making ROS2 an efficient backbone for distributed estimation and control.
+\\ \\
+ROS2 is released under the Apache 2.0 license, which permits free use, modification, and redistribution with proper attribution. Some components migrated from ROS1 retain the 3-Clause BSD license, both of which allow unrestricted research and development use. The ROS2 framework and source code are available at \url{https://www.ros.org/} \cite{ros2_website} and on its official GitHub repository \url{https://github.com/ros2} \cite{ros2_github}.

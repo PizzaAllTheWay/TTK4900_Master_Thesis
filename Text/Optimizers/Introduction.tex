@@ -1,0 +1,35 @@
+\subsection{Introduction}
+Optimizers are the engine behind the SLAM update step. Sensors add constraints, but the optimizer decides how the state moves to satisfy them. In practice, the problem is posed as a Maximum A Posteriori (MAP) problem, seeking the most likely trajectory and landmarks given all measurements and priors. With standard assumptions such as Gaussian noise and first order linearization, the MAP problem becomes a nonlinear least squares problem solved iteratively. At each iteration, the residuals are linearized around the current estimate and an increment that improves the state is computed. This ``correction'' is what lets SLAM reduce drift, enforce loop closures, and keep the map consistent. \cite{SLAM_part_present_future}
+\\ \\
+There are two dominant families for doing state estimation in SLAM, filtering and smoothing. Filtering methods, like EKF-SLAM (Extended Kalman Filter) and particle-filter SLAM (FastSLAM), maintain a rolling belief over the current state only (or a short window). They update online/live as measurements arrive by propagating the state and compressing all past information into the filters covariance or a set of weighted particles. This is simple and has low memory, but it throws away structure in old constraints and it can become inconsistent after many linearizations, especially when revisiting places (loop closures) or when correlations span long time intervals. Particle filters can represent multi modal beliefs but scale poorly with dimension and often need heavy resampling and clever proposal distributions to avoid degeneracy, something that is difficult to achieve in practice. \cite{SLAM_tutorial_part_1}\cite{SLAM_tutorial_part_2}
+\\ \\
+Smoothing methods keep a dense record of the variables we care about (eks, the whole robot trajectory and, if needed, landmarks) and all the measurement factors that tie them together. Instead of only ``where am I now?'', smoothing asks ``what is the entire trajectory and map that best fits everything we have ever seen?''. This global view tends to produce better accuracy and consistency, especially when closing loops or fusing many asynchronous sensors. Computationally, smoothing exposes sparse structure, meaning each measurement only touches a few variables, so the global normal equations are large but very sparse. Modern linear algebra plus careful data structures exploit that sparsity and outperform classical filters on realistic SLAM workloads. That is why smoothing has become the predominant approach in modern SLAM systems.
+\\ \\
+An estimate of the unknowns is maintained, denoted $\theta$ (robot poses, and landmarks). Each measurement yields a residual that indicates how far the current estimate is from the expected sensor reading. Close to the current estimate, a small nudge in $\theta$ gives an approximate change in the residuals. This is a first order (linear) approximation. Stacking all residuals together, that approximation looks like this \cite{iSAM_paper}:
+$$
+    r(\theta + \Delta\theta) \approx A\Delta\theta - b
+$$
+Here $A$ is the Jacobian, it describes how each residual changes with each variable. The vector $b$ is the residual at the current estimate (with a sign convention so the equation above points toward reducing error). The small vector $\Delta\theta$ is the ``correction'' to be computed. \cite{iSAM_paper}
+\\ \\
+The update step chooses $\Delta\theta$ that reduces all residuals as much as possible. The best practice here is to use MAP approach. In this section, measurement noise is assumed Gaussian (this is an approximation, not always true, and non Gaussian cases are discussed later). After linearizing the residuals around the current estimate, the MAP problem becomes a least-squares fit \cite{iSAM_paper}:
+\begin{equation}
+    \Delta\theta^\star = \arg\min_{\Delta\theta}\; \|A\Delta\theta - b\|^2
+    \label{eq:optimizer-introduction-delta-theta-star}
+\end{equation}
+Optimize this estimate so that change in $\Delta\theta^\star$ is equla to 0, ie linearize. When linearized, equation (\ref{eq:optimizer-introduction-delta-theta-star}) can be simplified to a so called normal equation \cite{iSAM_paper}:
+$$
+    A^{T}A\Delta\theta = A^{T}b
+$$
+This equation system can be then be solved by Cholesky decomposition of $A^{T}A$ or by optimization algorithms that will be discussing down bellow. Solve this linear system for $\Delta\theta$, then update/correct the estimate \cite{iSAM_paper}:
+$$
+    \theta = \theta + \Delta\theta
+$$
+For stability on harder problems Levenberg-Marquardt damping can be added, however the core idea stays the same across these optimizer algorithms. \cite{iSAM2_paper}
+\\ \\
+Classical batch smoothing forms the full information matrix, eliminates variables in a chosen order, and solves for all states together. That is accurate but not ideal for online use. Every new measurement would, in principle, require rebuilding and refactoring a large system, with cost growing with mission length. Real robots need real-time behavior, so iterative methods are prefer, incremental smoothing that reuses previous computation. The idea is to keep the factorization of the linearized problem in a data structure that can be updated locally when new factors arrive, only touching the parts of the graph that actually change.
+\\ \\
+This is where Iterative Smoothing and Mapping (iSAM and iSAM2) methods come in. They exploit that SLAM data are very sparse and mostly locally connected, a new odometry or measurement links a pose to a neighbor pose or a nearby landmark, not to everything. iSAM maintains a square root factor (via QR) and updates it incrementally using Givens rotations, with occasional reordering to control fill in. It keeps uncertainty queries fast and avoids full resolves, except when needed. iSAM2 goes further by expointing factor graphs and organizing the factorization into a Bayes tree data type (a directed tree of cliques). On new measurements, only the impacted cliques are relinearized and refactored, and variables are reordered incrementally. As a result, work scales with the local update rather than the entire graph, this makes update step ``fluid''.
+\\ \\
+In modern SLAM the hard part isn't ``doing SLAM'', its solving the SLAM optimization fast as data grows. Most methods use the same MAP correction loop. Linearize, solve for $\Delta\theta^\star$, update $\theta$. The real difference lies in how the problem is represented and updated. Smart data structures and good variable ordering keep data structures sparse and decoupled, and solves quick. Meanwhile bad data structure representation of data causes slowdowns.
+\\ \\
+This is exactly why, for SLAM on marine vessels, especially ASVs with tight space, power, and compute budgets but strict real-time needs, iterative smoothing methods like iSAM2 are a strong fit. They reuse prior factorizations, add new measurements as local factors, relinearize and refactor only the affected cliques, and reorder variables incrementally. In practice that means low latency, bounded memory and CPU load, and accuracy close to batch solutions, even on long missions.

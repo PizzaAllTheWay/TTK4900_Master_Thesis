@@ -1,0 +1,75 @@
+% Libraries for better looks
+\usepackage[a4paper, margin=2.5cm]{geometry} % Adjust the margins for paper to text edge
+\usepackage{graphicx} % Required for inserting images
+\usepackage{subcaption} % Allows more flexibility with picture placement
+\usepackage{amsmath} % For text in math
+\usepackage{amssymb} % Fancy math symbols
+\usepackage{listings} % Allows for code snipets
+\usepackage{xcolor} % Alows for collor
+\usepackage{color} % for the command \textcolor
+\usepackage{soul} % for the command \hl
+\usepackage{wrapfig} % For picture styling
+\usepackage{comment} % To comment out multiple lines of text
+\usepackage{graphicx} % For better graphics
+\usepackage[colorinlistoftodos]{todonotes} % Text highlight todo list \todo
+\usepackage{textcomp} % For degree and angle commands
+
+% Hyperlink library
+% Use PassOptionsToPackage to alight long hyperlinks/hypertexts
+\PassOptionsToPackage{hyphens}{url}\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true, % Set to true to enable colored links
+    linkcolor=black, % Color of internal links
+    filecolor=black, % Color of file links
+    urlcolor=black, % Color of external urls
+    citecolor=black, % Color of citations
+}
+% Sources and their style
+\usepackage[
+    backend=biber,
+    style=numeric,
+    citestyle=numeric,
+    sorting=none,
+    maxcitenames=99,
+    mincitenames=99,
+    maxbibnames=99,
+    minbibnames=99
+]{biblatex}
+
+% Glossary style
+\usepackage[acronym]{glossaries}
+\RequirePackage[acronym]{glossaries-extra}
+\usepackage[acronym]{glossaries-extra}
+\newglossarystyle{acronymStyle}{%
+  % put the glossary in a longtable environment:
+  \renewenvironment{theglossary}%
+    {\renewcommand{\arraystretch}{1.2}\begin{longtable}[l]{l|p{\glsdescwidth}}}%
+    {\end{longtable}}%
+  % have nothing after \begin{theglossary}:
+  \renewcommand*{\glossaryheader}{}%
+  % have nothing between glossary groups:
+  \renewcommand*{\glsgroupheading}[1]{}%
+  \renewcommand*{\glsgroupskip}{}%
+  % set display for each the glossary entry row:
+  \renewcommand*{\glossentry}[2]{%
+    \glsentryitem{##1}\glstarget{##1}{\glossentryname{##1}} &
+    \glossentrydesc{##1}\tabularnewline
+  }%
+}
+\makeglossaries
+
+% better line breaking & hyphenation
+\usepackage[T1]{fontenc} % Use modern text font encoding  
+\usepackage{lmodern} % Load scalable Latin Modern fonts  
+\usepackage[final]{microtype} % Improve text spacing & justification  
+\usepackage{xurl} % better URL breaks
+\emergencystretch=3em % let TeX stretch lines a bit
+\hbadness=100000 % hide underfull hbox messages
+
+% Define path where we get pictures from
+\graphicspath{{Pictures/}}
+\usepackage{float} % Makes sure pictures form correctly and can be placed anywhere  
+
+% Your project defaults
+\graphicspath{{figs/}}
+\lstset{basicstyle=\ttfamily\small, breaklines=true}

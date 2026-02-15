@@ -1,0 +1,358 @@
+\subsection{Preintegration on Manifolds}
+\subsubsection{INS Propagation Between IMU Samples}
+The preintegration algorithm builds directly on the deterministic continuous time INS motion model defined in Equation \ref{eq:kinematics-motion-model}, where the system state is given by $\mathbf{x} = [\mathbf{p}_{b/O}^{n}, \mathbf{v}_{b/O}^{n}, \mathbf{q}, \mathbf{a}_b, \boldsymbol{\omega}_b]^\top$ and the input vector by $\mathbf{u} = [\mathbf{a}_m, \boldsymbol{\omega}_m]^\top$, as presented in Equation \ref{eq:kinematics-motion-model-states}. The same state representation is used here, consisting of position $\mathbf{p}$, velocity $\mathbf{v}$, and attitude $R(\mathbf{q})$, along with the accelerometer and gyroscope bias states $\mathbf{a}_b$ and $\boldsymbol{\omega}_b$. The motion model follows the same nominal kinematic equations as defined in the system modeling chapter, where the rigid body dynamics evolve according to the IMU measurements $(\mathbf{a}_m, \boldsymbol{\omega}_m)$ corrected by their respective biases. Hence, the same continuous time INS equations described in Equation \ref{eq:kinematics-motion-model} and the corresponding discrete form in Equation \ref{eq:state-estimation-discrete-propagartion} apply here.
+\\ \\
+In contrast to the full state estimator formulation used previously, which employed a 1st order Gauss Markov process for modeling bias drift, preintegration adopts a simpler Brownian motion bias model. This simplification is made because the preintegration window is short, and any bias evolution within this interval is small compared to the measurement noise and will be corrected later by the backend optimizer. The Brownian model is defined as
+\begin{equation}
+    \begin{aligned}
+        \dot{\mathbf{a}}_b = \boldsymbol{\eta}_{a_b} \qquad \boldsymbol{\eta}_{a_b} \sim \mathcal{N}(0, \sigma_{a_b}^2 I_3) \\
+        \dot{\boldsymbol{\omega}}_b = \boldsymbol{\eta}_{\omega_b} \qquad \boldsymbol{\eta}_{\omega_b} \sim \mathcal{N}(0, \sigma_{\omega_b}^2 I_3)
+    \end{aligned}
+    \label{eq:preintegration-bias-brownian-model}
+\end{equation}
+where $\boldsymbol{\eta}_{a_b}$ and $\boldsymbol{\eta}_{\omega_b}$ are zero mean Gaussian noise processes representing the bias random walk. The discrete time equivalent form becomes
+\begin{equation}
+    \begin{aligned}
+        \mathbf{a}_{b,k+1} &= \mathbf{a}_{b,k} + \boldsymbol{\eta}_{a_b,d} \\
+        \boldsymbol{\omega}_{b,k+1} &= \boldsymbol{\omega}_{b,k} + \boldsymbol{\eta}_{\omega_b,d}
+    \end{aligned}
+    \label{eq:preintegration-bias-propagartion}
+\end{equation}
+with $\operatorname{Cov}(\boldsymbol{\eta}_{a_b,d}) = \sigma_{a_b}^2 \Delta t I_3$ and $\operatorname{Cov}(\boldsymbol{\eta}_{\omega_b,d}) = \sigma_{\omega_b}^2 \Delta t I_3$. Over short preintegration intervals, these biases are assumed constant, meaning their change between IMU samples is negligible. The integration therefore proceeds using frozen bias estimates $\mathbf{a}_b$ and $\boldsymbol{\omega}_b$ from the start of the interval.
+\\ \\
+The nominal discrete time propagation of position, velocity, and rotation between IMU samples follows the same structure as the state estimation chapter in Equation \ref{eq:state-estimation-discrete-propagartion}, but is here expressed explicitly for clarity as
+$$
+    \begin{aligned}
+        R_{k+1} &= R_k \exp([\boldsymbol{\omega}_{m,k} - \boldsymbol{\omega}_{b,k}]_\times \Delta t) \\
+        v_{k+1} &= v_k + R_k(\mathbf{a}_{m,k} - \mathbf{a}_{b,k})\Delta t + \mathbf{g}\Delta t \\
+        p_{k+1} &= p_k + v_k\Delta t + \tfrac{1}{2}R_k(\mathbf{a}_{m,k} - \mathbf{a}_{b,k})\Delta t^2 + \tfrac{1}{2}\mathbf{g}\Delta t^2
+    \end{aligned}
+$$
+In this formulation, the index $k$ denotes consecutive IMU samples integrated at a high rate (typically hundreds of hertz). These samples are accumulated over the time interval between two keyframes $i$ and $j$, where each keyframe corresponds to a slower exteroceptive measurement such as a sonar 2D image frame. The goal of preintegration is to compress all intermediate IMU updates $(k=i, \ldots, j-1)$ into a single compound relative motion estimate connecting the two keyframes $i$ and $j$. 
+\\ \\
+The raw IMU outputs $\mathbf{a}_{m,k}$ and $\boldsymbol{\omega}_{m,k}$ represent the measured specific force and angular velocity in the body frame. The bias terms $\mathbf{a}_{b,k}$ and $\boldsymbol{\omega}_{b,k}$ are the current estimates of the accelerometer and gyroscope biases and are subtracted once within the propagation equations to obtain the corrected physical quantities. The resulting propagation is therefore already bias compensated and forms the deterministic foundation for the preintegration and subsequent error propagation steps described in the following sections.
+\\ \\
+At the beginning of each new preintegration interval $(t_j, t_{j+1}]$, the initial state $(R_i, v_i, p_i)$ is set equal to the optimized estimates from the previous keyframe, ie:
+$$
+    R_i = R_j^{\text{opt}}, \quad v_i = v_j^{\text{opt}}, \quad p_i = p_j^{\text{opt}}, \quad B_i = B_j^{\text{opt}}
+$$
+This ensures that the preintegration always starts from the most accurate state and bias estimates provided by the backend optimizer, maintaining temporal consistency across all keyframe intervals.
+
+
+
+\subsubsection{Preintegration Initialization}
+Preintegration is initialized at the time of keyframe $i$, corresponding to the most recent exteroceptive measurement such as a sonar frame. All IMU samples collected between keyframes $i$ and $j$ are subsequently integrated in the local coordinate frame of keyframe $i$. This ensures that the resulting preintegrated quantities describe motion relative to keyframe $i$ rather than the global frame, maintaining numerical stability and simplifying later optimization.
+\\ \\
+At the start of preintegration, the relative motion increments are initialized as
+$$
+    \Delta R_{ii} = I_3, \qquad
+    \Delta v_{ii} = \mathbf{0}_3, \qquad
+    \Delta p_{ii} = \mathbf{0}_3
+$$
+which represent, respectively, the initial relative rotation, velocity, and position between the same keyframe. These quantities form the starting point for integrating subsequent IMU samples.
+\\ \\
+The IMU bias used during preintegration is frozen at its current estimate from keyframe $i$, denoted by
+$$
+    B_i^{\text{preint}} = [\mathbf{a}_{b,i},\, \mathbf{\omega}_{b,i}]
+$$
+and is held constant throughout the preintegration interval $(t_i, t_j]$. The assumption of frozen bias is reasonable since the bias drift is slow compared to the short duration between keyframes, and any accumulated error is later corrected by the backend optimizer.
+\\ \\
+For uncertainty propagation, the Jacobians of the preintegrated quantities with respect to bias are initialized as
+$$
+    J_R^{\boldsymbol{\omega}_b} = J_v^{\mathbf{a}_b} = J_v^{\boldsymbol{\omega}_b} = J_p^{\mathbf{a}_b} = J_p^{\boldsymbol{\omega}_b} = 0
+$$
+These matrices are propagated forward with each IMU sample to capture how small bias perturbations affect the resulting preintegrated deltas, allowing efficient bias correction without re-integrating all IMU data.
+\\ \\
+All IMU readings are integrated relative to the orientation $R_i$ of the starting keyframe, ensuring that the computed preintegrated deltas $(\Delta R_{ij}, \Delta v_{ij}, \Delta p_{ij})$ remain expressed consistently in the local frame of keyframe $i$. The index $k$ denotes consecutive IMU samples integrated at a high rate (typically hundreds of hertz), while the index $j$ represents the current end of the ongoing preintegration interval. As new IMU data arrive, $j$ moves forward in time, meaning that $(\Delta R_{ij}, \Delta v_{ij}, \Delta p_{ij})$ are continuously updated until the next exteroceptive keyframe (eks sonar frame) is reached. Once keyframe $j$ is established, the accumulated deltas at that moment represent the complete preintegrated motion between frames $i$ and $j$.
+\\ \\
+This initialization therefore defines the starting state, bias configuration, and Jacobian setup for the recursive preintegration algorithm described in the following section.
+
+
+
+\subsubsection{Preintegration Algorithm (Recursive Update)}
+Once initialized, the preintegration proceeds recursively by integrating each incoming IMU measurement between the current keyframe $i$ and the evolving endpoint $j$. The integration runs at IMU rate (typically hundreds of hertz), using the frozen bias estimate $B_i^{\text{preint}} = [\mathbf{a}_{b,i}, \boldsymbol{\omega}_{b,i}]$. The preintegrated quantities $\Delta R_{ij}$, $\Delta v_{ij}$, and $\Delta p_{ij}$ are updated incrementally with every IMU sample $k$ according to
+\begin{equation}
+    \begin{aligned}
+        \Delta R_{i,k+1} &= \Delta R_{i,k} \exp([\boldsymbol{\omega}_{m,k} - \boldsymbol{\omega}_{b,i}]_\times \Delta t) \\
+        \Delta v_{i,k+1} &= \Delta v_{i,k} + \Delta R_{i,k}(\mathbf{a}_{m,k} - \mathbf{a}_{b,i})\Delta t \\
+        \Delta p_{i,k+1} &= \Delta p_{i,k} + \Delta v_{i,k}\Delta t + \tfrac{1}{2}\Delta R_{i,k}(\mathbf{a}_{m,k} - \mathbf{a}_{b,i})\Delta t^2
+    \end{aligned}
+    \label{eq:preintegration-nominal-update}
+\end{equation}
+The exponential map $\exp([\cdot]_\times)$ ensures that the orientation update remains consistent on the manifold $SO(3)$, maintaining a valid rotation representation after each integration step. These updates are applied sequentially for all IMU samples within the preintegration window $(t_i, t_j]$.
+\\ \\
+The integration is performed in the local frame of keyframe $i$, meaning that all quantities $(\Delta R_{ij}, \Delta v_{ij}, \Delta p_{ij})$ are expressed relative to the orientation $R_i$. The index $k$ refers to the current IMU sample, while $j$ marks the progressively advancing endpoint of the preintegration interval as new IMU data arrive. When the next exteroceptive keyframe $j$ (eks a 2D sonar image) is received, the accumulated deltas represent the complete preintegrated motion between the two complete keyframes $i$ and $j$.
+\\ \\
+This recursive integration scheme effectively compresses all high frequency IMU updates into a single relative motion constraint while preserving the nonlinear structure of the underlying kinematics on $SE(3)$. It forms the foundation for the subsequent Jacobian propagation and covariance update described in the following sections.
+
+
+
+\subsubsection{Bias Jacobian Propagation}
+The bias Jacobian propagation captures how small changes in accelerometer and gyroscope biases affect the preintegrated quantities $(\Delta R_{ij}, \Delta v_{ij}, \Delta p_{ij})$. Although the biases are assumed constant within each preintegration interval, they are later refined by the optimizer. By maintaining their partial derivatives, the preintegration can be corrected efficiently without re-integrating all IMU data. The Jacobians represent the first-order sensitivity of the preintegrated deltas with respect to the bias states:
+$$
+    J_R^{\boldsymbol{\omega}_b} = \frac{\partial\,\text{Log}(\Delta R_{ij})}{\partial \boldsymbol{\omega}_b}, \quad
+    J_v^{\mathbf{a}_b} = \frac{\partial\,\Delta v_{ij}}{\partial \mathbf{a}_b}, \quad
+    J_v^{\boldsymbol{\omega}_b} = \frac{\partial\,\Delta v_{ij}}{\partial \boldsymbol{\omega}_b}, \quad
+    J_p^{\mathbf{a}_b} = \frac{\partial\,\Delta p_{ij}}{\partial \mathbf{a}_b}, \quad
+    J_p^{\boldsymbol{\omega}_b} = \frac{\partial\,\Delta p_{ij}}{\partial \boldsymbol{\omega}_b}
+$$
+The $\text{Log}(\cdot)$ operator in $J_R^{\boldsymbol{\omega}_b}$ maps the incremental rotation $\Delta R_{ij}$ from the manifold $SO(3)$ to its tangent space $\mathfrak{so}(3)$, allowing the small rotation errors to be represented as 3D vectors in Euclidean space where derivatives can be taken linearly (See Equations \ref{eq:lie-groups-and-manifold-exponential} and \ref{eq:lie-groups-and-manifold-logarithmic}). All Jacobians are initialized to zero at the start of preintegration and propagated at every IMU timestep using 1st order linearization:
+$$
+    J(t+\Delta t) = J(t) + \frac{\partial(\Delta R, \Delta v, \Delta p)}{\partial b}\Delta t
+$$
+No higher order bias dynamics are modeled since bias drift is slow and follows a Brownian process. Given the nominal preintegration updates with Equation \ref{eq:preintegration-nominal-update} the bias Jacobians evolve as
+$$
+    \begin{aligned}
+    J_R^{\boldsymbol{\omega}_b}(k+1) &\approx J_R^{\boldsymbol{\omega}_b}(k) - \Delta R_{i,k}\Gamma_1\Delta t \\
+    J_v^{\mathbf{a}_b}(k+1) &\approx J_v^{\mathbf{a}_b}(k) - \Delta R_{i,k}\Delta t \\
+    J_v^{\boldsymbol{\omega}_b}(k+1) &\approx J_v^{\boldsymbol{\omega}_b}(k) - \Delta R_{i,k}[\mathbf{a}_{m,k} - \mathbf{a}_{b,i}]_\times J_R^{\boldsymbol{\omega}_b}(k)\Delta t \\
+    J_p^{\mathbf{a}_b}(k+1) &\approx J_p^{\mathbf{a}_b}(k) + J_v^{\mathbf{a}_b}(k)\Delta t - \tfrac{1}{2}\Delta R_{i,k}\Delta t^2 \\
+    J_p^{\boldsymbol{\omega}_b}(k+1) &\approx J_p^{\boldsymbol{\omega}_b}(k) + J_v^{\boldsymbol{\omega}_b}(k)\Delta t - \tfrac{1}{2}\Delta R_{i,k}[\mathbf{a}_{m,k} - \mathbf{a}_{b,i}]_\times J_R^{\boldsymbol{\omega}_b}(k)\Delta t^2
+    \end{aligned}
+$$
+where $\Gamma_1$ is the 1st order right Jacobian of $SO(3)$, evaluated at the small rotation vector $\boldsymbol{\phi}_k = (\boldsymbol{\omega}_{m,k} - \boldsymbol{\omega}_{b,i})\Delta t$. It maps perturbations in the Lie algebra (tangent space) to perturbations on the manifold, ensuring correct rotation updates for small angular increments (See Equations \ref{eq:lie-groups-and-manifold-exponential} and \ref{eq:lie-groups-and-manifold-logarithmic}). In closed form
+$$
+    \Gamma_1(\boldsymbol{\phi}_k) = I_3 - \frac{1 - \cos\|\boldsymbol{\phi}_k\|}{\|\boldsymbol{\phi}_k\|^2}[\boldsymbol{\phi}_k]_\times + \frac{\|\boldsymbol{\phi}_k\| - \sin\|\boldsymbol{\phi}_k\|}{\|\boldsymbol{\phi}_k\|^3}[\boldsymbol{\phi}_k]_\times^2
+$$
+and for small rotations, it can be approximated as
+$$
+    \Gamma_1(\boldsymbol{\phi}_k) \approx I_3 - \tfrac{1}{2}[\boldsymbol{\phi}_k]_\times
+$$
+This Jacobian maintains manifold consistency by correctly relating incremental angular changes to their corresponding local linearizations on $SO(3)$. The $\text{Log}(\cdot)$ operator in $J_R^{\boldsymbol{\omega}_b}$ projects the rotational error from the manifold $SO(3)$ to the tangent space $\mathfrak{so}(3)$, providing a linear representation of small rotation errors that enables differentiation with respect to the gyroscope bias.
+\\ \\
+Finally, the Jacobians computed at each IMU timestep are accumulated over the full preintegration interval $(t_i, t_j]$ to form the total bias sensitivity between keyframes $i$ and $j$. This accumulation corresponds to summing the incremental contributions from each IMU update:
+$$
+    J_R^{\boldsymbol{\omega}_b} = \sum_{k=i}^{j-1} J_R^{\boldsymbol{\omega}_b}(k), \qquad
+    J_v^{\mathbf{a}_b} = \sum_{k=i}^{j-1} J_v^{\mathbf{a}_b}(k), \qquad
+    J_v^{\boldsymbol{\omega}_b} = \sum_{k=i}^{j-1} J_v^{\boldsymbol{\omega}_b}(k), \qquad
+    J_p^{\mathbf{a}_b} = \sum_{k=i}^{j-1} J_p^{\mathbf{a}_b}(k), \qquad
+    J_p^{\boldsymbol{\omega}_b} = \sum_{k=i}^{j-1} J_p^{\boldsymbol{\omega}_b}(k)
+$$
+Thus, each Jacobian term represents the cumulative 1st order effect of bias perturbations over all IMU samples between the two keyframes. These accumulated Jacobians form the final bias correction matrices used in the subsequent preintegration update step.
+
+
+
+\subsubsection{Bias Re-Linearization Using Accumulated Jacobians}
+When the optimizer send update and corrects the bias estimates, the stored preintegrated quantities must be re-linearized to stay consistent with the new bias values. Instead of re-integrating all IMU samples, this correction is efficiently performed using the accumulated Jacobians computed during preintegration.
+\\ \\
+The bias correction increment is defined as
+$$
+    \delta B_i = [\delta \mathbf{a}_b, \, \delta \boldsymbol{\omega}_b] = B_i^{\text{opt}} - B_i^{\text{preint}}
+$$
+where $B_i^{\text{preint}}$ is the frozen bias used during preintegration and $B_i^{\text{opt}}$ is the updated bias from the optimizer. The corrected preintegrated quantities are obtained by applying a 1st order correction using the propagated Jacobians:
+$$
+    \begin{aligned}
+        \Delta R_{ij}^{*} &\approx \Delta R_{ij}\exp(J_R^{\boldsymbol{\omega}_b}\delta\boldsymbol{\omega}_b) \\
+        \Delta v_{ij}^{*} &\approx \Delta v_{ij} + J_v^{\mathbf{a}_b}\delta\mathbf{a}_b + J_v^{\boldsymbol{\omega}_b}\delta\boldsymbol{\omega}_b \\
+        \Delta p_{ij}^{*} &\approx \Delta p_{ij} + J_p^{\mathbf{a}_b}\delta\mathbf{a}_b + J_p^{\boldsymbol{\omega}_b}\delta\boldsymbol{\omega}_b
+    \end{aligned}
+$$
+where $(\cdot)^*$ denotes the bias corrected preintegrated quantities. The $\exp(\cdot)$ operator maps the small correction $J_R^{\boldsymbol{\omega}_b}\delta\boldsymbol{\omega}_b$ from the tangent space back onto the rotation manifold $SO(3)$, ensuring consistent attitude updates (See Equations \ref{eq:lie-groups-and-manifold-exponential} and \ref{eq:lie-groups-and-manifold-logarithmic}).
+\\ \\
+The accumulated Jacobians $(J_R^{\boldsymbol{\omega}_b}, J_v^{\mathbf{a}_b}, J_v^{\boldsymbol{\omega}_b}, J_p^{\mathbf{a}_b}, J_p^{\boldsymbol{\omega}_b})$ compactly represent the total 1st order sensitivity of the preintegrated deltas to bias changes across the entire preintegration interval $(t_i, t_j]$. Using these, the optimizer can instantly re-evaluate the preintegrated measurements without reprocessing any IMU data, maintaining full geometric consistency while minimizing computational cost.
+
+
+
+\subsubsection{Predicted Motion Reconstruction}
+Once the preintegrated measurements have been bias corrected, they can be used to reconstruct the nominal motion between the two keyframes $i$ and $j$. This reconstruction provides the predicted navigation state $(\hat{R}_j, \hat{v}_j, \hat{p}_j)$ at keyframe $j$, given the known state $(R_i, v_i, p_i)$ at keyframe $i$ and the corrected preintegrated deltas $(\Delta R_{ij}^{*}, \Delta v_{ij}^{*}, \Delta p_{ij}^{*})$.
+\\ \\
+The nominal motion prediction is obtained as
+$$
+    \begin{aligned}
+        \hat{R}_j &= R_i \Delta R_{ij}^{*} \\
+        \hat{v}_j &= v_i + \mathbf{g}\Delta t_{ij} + R_i \Delta v_{ij}^{*} \\
+        \hat{p}_j &= p_i + v_i\Delta t_{ij} + \tfrac{1}{2}\mathbf{g}\Delta t_{ij}^2 + R_i \Delta p_{ij}^{*}
+    \end{aligned}
+$$
+where $\mathbf{g}$ is the gravity vector expressed in the navigation frame, and $\Delta t_{ij}$ is the total elapsed time between keyframes $i$ and $j$. The predicted quantities $(\hat{R}_j, \hat{v}_j, \hat{p}_j)$ represent the best estimate of the motion over the interval $(t_i, t_j]$ using only IMU data.
+\\ \\
+The resulting predicted state for keyframe $j$ is compactly expressed as
+$$
+    \hat{X}_j =
+    \begin{bmatrix}
+        \hat{p}_j \\
+        \hat{v}_j \\
+        \hat{R}_j
+    \end{bmatrix}
+$$
+which serves as the nominal prior for the next optimization step and ensures temporal consistency across keyframes.
+
+
+
+\subsubsection{Predicted Bias Reconstruction}
+In addition to predicting the nominal motion, the IMU bias state must also be propagated between keyframes. The bias follows the Brownian random walk model introduced earlier in Equation \ref{eq:preintegration-bias-brownian-model}, which assumes slow, uncorrelated drift over short time intervals.  
+\\ \\
+The discrete time bias propagation between consecutive IMU samples is given by Equation \ref{eq:preintegration-bias-propagartion}, where the bias mean remains constant, but its uncertainty grows due to the additive white noise processes $\boldsymbol{\eta}_{a_b,d}$ and $\boldsymbol{\eta}_{\omega_b,d}$. Over the preintegration interval $(t_i, t_j]$, this simplifies to
+$$
+    \begin{aligned}
+        \hat{\mathbf{a}}_{b,j} &= \mathbf{a}_{b,i} \\
+        \hat{\boldsymbol{\omega}}_{b,j} &= \boldsymbol{\omega}_{b,i}
+    \end{aligned}
+$$
+indicating that the bias mean is held constant throughout the preintegration. The corresponding uncertainty growth due to the Brownian process is captured later through the bias covariance matrix $Q_b$.  
+\\ \\
+The predicted bias state at keyframe $j$ is therefore
+$$
+    \hat{B}_j = 
+    \begin{bmatrix}
+        \hat{\mathbf{a}}_{b,j} \\
+        \hat{\boldsymbol{\omega}}_{b,j}
+    \end{bmatrix}
+    =
+    \begin{bmatrix}
+        \mathbf{a}_{b,i} \\
+        \boldsymbol{\omega}_{b,i}
+    \end{bmatrix}
+$$
+and is passed together with the predicted motion state $\hat{X}_j$ to the backend optimizer for joint correction and relinearization.
+
+
+
+\subsubsection{Preintegration Covariance Propagation}
+In addition to the predicted navigation states, the associated uncertainty must also be propagated to quantify the confidence of the preintegrated motion estimate. This covariance describes how IMU process noise accumulates over the preintegration interval and directly influences the weighting of the IMU constraint during optimization.  
+\\ \\
+The propagation of covariance during IMU preintegration follows the same mathematical principles as the ESKF formulation presented in the State Estimation chapter. In particular, it corresponds to a reduced version of the full error state INS model in Equation \ref{eq:state-estimation-error-state-dynamics}, using only the first three state components, position, velocity, and attitude. The bias states are omitted here since their uncertainty is treated separately under the Brownian motion bias model described previously. The resulting reduced error state vector is therefore defined as
+$$
+    \delta \mathbf{x} =
+    \begin{bmatrix}
+        \delta \mathbf{p} \\
+        \delta \mathbf{v} \\
+        \delta \mathbf{q}
+    \end{bmatrix}
+$$
+where $\delta\mathbf{q}$ represents the small quaternion attitude error, approximated as in Equation \ref{eq:state-estimation-error-states} using the small angle representation
+$$
+    \delta\mathbf{q} \approx
+    \begin{bmatrix}
+        1 \\
+        \tfrac{1}{2}\delta\boldsymbol{\theta}
+    \end{bmatrix}
+$$
+This small angle approximation allows attitude uncertainty to be represented in a minimal 3D tangent space, preserving the quaternion manifold structure while maintaining linear error propagation.
+\paragraph{Continuous Time Error Dynamics} \mbox{}\\[0.5em] \noindent  
+The continuous time error dynamics describe how small perturbations in position, velocity, and attitude evolve under the influence of IMU noise. These equations are not used to compute the nominal motion itself, only to propagate covariance and track how uncertainty grows over time.  
+\\ \\
+The reduced error state is defined as  
+$$
+    \delta\mathbf{x}(t) =
+    \begin{bmatrix}
+        \delta \mathbf{p}(t) \\
+        \delta \mathbf{v}(t) \\
+        \delta \boldsymbol{\phi}(t)
+    \end{bmatrix}
+$$
+where $\delta\mathbf{p}$, $\delta\mathbf{v}$, and $\delta\boldsymbol{\phi}$ are small perturbations in position, velocity, and attitude. The attitude error $\delta\boldsymbol{\phi}$ lies in the tangent space of $SO(3)$ and locally perturbs the nominal rotation as  
+$$
+    R(\mathbf{q}) = \hat{R}(\mathbf{q})\exp([\delta\boldsymbol{\phi}]_\times)
+$$
+This represents a minimal 3D error model that allows linear propagation of orientation uncertainty while preserving the manifold constraint.  
+\\ \\
+The linearized error dynamics follow the first three block rows of the ESKF system matrix in Equation \ref{eq:state-estimation-error-state-linear-time-varying-matrices}, excluding bias terms:  
+$$
+    \delta \dot{\mathbf{x}}(t) = A(\mathbf{x})\,\delta \mathbf{x}(t) + G(\mathbf{x})\,\mathbf{n}(t)
+$$
+where $\mathbf{n}(t) = [\mathbf{n}_a,\, \mathbf{n}_\omega]^\top$ represents zero-mean white Gaussian accelerometer and gyroscope noise.  
+\\ \\
+The system matrices are  
+\begin{equation}
+    A(\mathbf{x}) =
+    \begin{bmatrix}
+        0 & I_3 & 0 \\
+        0 & 0 & -R_i^\top R(\mathbf{q})[\mathbf{a}_m - \mathbf{a}_b]_\times \\
+        0 & 0 & -[\boldsymbol{\omega}_m - \boldsymbol{\omega}_b]_\times
+    \end{bmatrix},
+    \quad
+    G(\mathbf{x}) =
+    \begin{bmatrix}
+        0 & 0 \\
+        -R_i^\top R(\mathbf{q}) & 0 \\
+        0 & -I_3
+    \end{bmatrix}
+\end{equation}
+Here $R_i^\top R(\mathbf{q})$ gives the relative rotation between the start keyframe $i$ and the current IMU orientation, ensuring that all quantities remain expressed in the local frame of keyframe $i$.  
+\\ \\
+Although the true error states $\delta\mathbf{x}$ are never explicitly computed, the corresponding linearized dynamics through $A(\mathbf{x})$ and $G(\mathbf{x})$ are used to propagate the covariance over time. This provides an efficient and consistent way to capture the growth of IMU induced uncertainty between keyframes.  
+\paragraph{Discretization and Covariance Propagation} \mbox{}\\[0.5em] \noindent
+As discussed in in previous chapters under State Estimation in ESKF discretization section (See Equation \ref{eq:state-estimation-error-state-dynamics-discretized}), discretization of the continuous error dynamics is necessary for digital implementation. Similar to the ESKF, the Zero Order Hold (ZOH) method can be applied here, or similar methods, assuming the IMU inputs and noise remain constant within each sampling interval $\Delta t$. The discrete time covariance propagation is therefore given by
+$$
+    P_{IMU,k+1} = A_k P_{IMU,k} A_k^\top + B_k Q_\eta B_k^\top
+$$
+where
+$$
+    Q_\eta = \operatorname{diag}(\sigma_a^2 I_3, \sigma_\omega^2 I_3)
+$$
+is the continuous time IMU noise covariance, scaled by the timestep $\Delta t$ within the discretization. This formulation is mathematically equivalent to the discretized process noise computation in Equation \ref{eq:state-estimation-error-state-dynamics-discretized}, except that only the preintegrated motion subspace $(\mathbf{p}, \mathbf{v}, \mathbf{q})$ is considered. The initial covariance at the start of preintegration is set to
+$$
+    P_{IMU,ii} = 0_{9\times9},
+$$
+indicating no accumulated uncertainty at keyframe $i$. As IMU samples are integrated, $P_{IMU,k}$ evolves recursively with each step, incorporating both linearized system dynamics and sensor noise effects.
+\paragraph{Resulting Preintegration Covariance} \mbox{}\\[0.5em] \noindent
+After integrating all IMU measurements between keyframes $i$ and $j$, the final propagated covariance is obtained as
+$$
+    P_{IMU,ij} = P_{IMU,k_{\text{end}}}
+$$
+This $9\times9$ covariance matrix represents the total uncertainty of the preintegrated relative motion $(\Delta p_{ij}, \Delta v_{ij}, \Delta R_{ij})$ in the local frame of keyframe $i$. The inverse covariance, referred to as the information matrix,
+$$
+    \Lambda_{IMU,ij} = P_{IMU,ij}^{-1}
+$$
+is used to weight the IMU factor in the nonlinear optimizers such as iSAM2 discussed in later chapters. A higher $\Lambda_{IMU,ij}$ corresponds to greater trust in the IMU preintegration constraint, while a lower weight allows more correction from exteroceptive sensor updates such as sonar or vision.  
+\\ \\
+In summary, this preintegration covariance propagation step is mathematically identical to the error state covariance propagation in the ESKF (Equations \ref{eq:state-estimation-error-state-dynamics}-\ref{eq:state-estimation-error-state-dynamics-discretized}), except that it operates on the reduced state $(\mathbf{p}, \mathbf{v}, \mathbf{q})$ and uses the local frame of keyframe $i$. This reduction significantly improves computational efficiency while maintaining consistency with the underlying inertial error dynamics.
+
+
+
+\subsubsection{Bias Covariance Propagation}
+In parallel with the preintegrated motion covariance, the uncertainty of the IMU bias states must also be propagated between keyframes. As introduced in Equation \ref{eq:preintegration-bias-brownian-model}, both accelerometer and gyroscope biases follow a Brownian random walk process, representing slow stochastic drift with zero mean. Over the short duration of a preintegration interval, the bias means remain effectively constant, while their uncertainty increases linearly with time.  
+\\ \\
+Applying the same discretization method used for the preintegration covariance like ZOH or similar methods (see Equation \ref{eq:state-estimation-error-state-dynamics-discretized}), the discrete time bias covariance propagation is given by
+$$
+    P_{b,ij} =
+    \begin{bmatrix}
+        \sigma_{a_b}^2 I_3 & 0 \\
+        0 & \sigma_{\omega_b}^2 I_3
+    \end{bmatrix}
+    \Delta t_{ij}
+$$
+This represents the accumulated uncertainty in the bias states between keyframes $i$ and $j$, arising from the continuous time noise processes $\boldsymbol{\eta}_{a_b}$ and $\boldsymbol{\eta}_{\omega_b}$. The bias covariance evolves independently from the preintegrated motion covariance since the bias random walk is assumed uncorrelated with the instantaneous IMU measurement noise.  
+\\ \\
+The corresponding bias information matrix is therefore defined as
+$$
+    \Lambda_{b,ij} = P_{b,ij}^{-1}
+$$
+and represents the statistical weighting of the bias factor in the optimizer. This ensures that the bias evolution constraint contributes independently from the motion factor, allowing consistent and decoupled correction of both motion and bias estimates during optimization.
+
+
+
+\subsubsection{Algorithm Summary}
+The complete preintegration procedure can be summarized as follows:
+\begin{itemize}
+    \item \textbf{Initialization:}  
+    Set $\Delta R_{ii} = I_3$, $\Delta v_{ii} = 0$, $\Delta p_{ii} = 0$, and initialize bias Jacobians $J = 0$.  
+    Freeze bias estimate $B_i^{\text{preint}} = [\mathbf{a}_{b,i}, \boldsymbol{\omega}_{b,i}]$
+
+    \item \textbf{Recursive IMU Integration:}  
+    Integrate all IMU samples $(\mathbf{a}_{m,k}, \boldsymbol{\omega}_{m,k})$ between keyframes $i$ and $j$ to obtain  
+    $\Delta R_{ij}, \Delta v_{ij}, \Delta p_{ij}$
+
+    \item \textbf{Bias Jacobian Propagation:}  
+    Propagate and accumulate $J_R^{\boldsymbol{\omega}_b}$, $J_v^{\mathbf{a}_b}$, $J_v^{\boldsymbol{\omega}_b}$, $J_p^{\mathbf{a}_b}$, $J_p^{\boldsymbol{\omega}_b}$
+
+    \item \textbf{Bias Correction:}  
+    Apply bias correction using accumulated Jacobians to get  
+    $\Delta R_{ij}^{*}, \Delta v_{ij}^{*}, \Delta p_{ij}^{*}$
+
+    \item \textbf{Predicted State Reconstruction:}  
+    Compute $\hat{R}_j, \hat{v}_j, \hat{p}_j$ from $(R_i, v_i, p_i)$ and $(\Delta R_{ij}^{*}, \Delta v_{ij}^{*}, \Delta p_{ij}^{*})$
+
+    \item \textbf{Predicted Bias Reconstruction:}  
+    Propagate $\hat{B}_j = [\hat{\mathbf{a}}_{b,j}, \hat{\boldsymbol{\omega}}_{b,j}] = [\mathbf{a}_{b,i}, \boldsymbol{\omega}_{b,i}]$
+
+    \item \textbf{State Covariance Propagation:}  
+    Compute $P_{IMU,ij}$ and corresponding information matrix $\Lambda_{IMU,ij} = P_{IMU,ij}^{-1}$
+
+    \item \textbf{Bias Covariance Propagation:}  
+    Compute $P_{b,ij}$ and corresponding information matrix $\Lambda_{b,ij} = P_{b,ij}^{-1}$
+
+    \item \textbf{Output:}  
+    Return $(\Delta R_{ij}^{*}, \Delta v_{ij}^{*}, \Delta p_{ij}^{*}, \hat{B}_j, P_{IMU,ij}, P_{b,ij}, \Lambda_{IMU,ij}, \Lambda_{b,ij})$
+\end{itemize}

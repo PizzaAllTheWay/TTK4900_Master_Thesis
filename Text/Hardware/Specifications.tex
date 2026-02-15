@@ -1,0 +1,34 @@
+\subsection{Specifications}
+The microAmpere ASV was designed as a flexible and modular research platform, combining reliable marine hardware with powerful embedded computing and sensing capabilities. Its specification focuses on providing stable, high precision navigation and perception for real-time autonomy experiments in nearshore and harbor environments. The systems modularity allows researchers to swap components and integrate additional sensors without structural modification. The vessels configuration and components are summarized in Table \ref{tab:microampere_specs} down bellow.
+\begin{table}[H]
+    \centering
+    \caption{Technical specifications of the microAmpere ASV \cite{microAmpere_hardware_master_thesis1}}
+    \label{tab:microampere_specs}
+    \begin{tabular}{|p{4cm}|p{9cm}|}
+        \hline
+        \textbf{Category} & \textbf{Specification} \\ \hline
+        \textbf{Platform Base} & Blue Robotics BlueBoat twin hull (HDPE construction) \\ \hline
+        \textbf{Dimensions} & Length: 1.8 m \quad Width: 1.1 m \quad Draft: 0.25 m \\ \hline
+        \textbf{Weight} & Approx. 45 kg (fully equipped) \\ \hline
+        \textbf{Propulsion} & Dual Blue Robotics T200 thrusters with ESC control, differential thrust for steering \\ \hline
+        \textbf{Power Supply} & Dual 6S Li-Ion batteries (22.2 V nominal, 20 Ah each), hot-swappable configuration \\ \hline
+        \textbf{Compute Units} & NVIDIA Jetson Orin NX (perception and LiDAR processing) \\ 
+        & LattePanda 3 Delta (navigation, control, and communication) \\ \hline
+        \textbf{Operating System} & Ubuntu 24.04 LTS with ROS2 Jazzy Jalisco \\ \hline
+        \textbf{Networking} & Teltonika RUTX50 router (4G/5G, Wi-Fi, and GNSS) with Tailscale VPN \\ \hline
+        \textbf{Localization Sensors} & Dual u-blox ZED-F9P GNSS modules with RTK correction \\ 
+        & Xsens MTi-680G high-precision IMU \\ \hline
+        \textbf{Perception Sensors} & Ouster OS1-64 LiDAR \\ 
+        & StereoLabs ZED-X stereo camera pair \\ \hline
+        \textbf{Timing and Synchronization} & PPS signal distribution and PTP-based synchronization via custom timing board \\ \hline
+        \textbf{Power Monitoring} & Custom power sensing PCB (voltage, current, and temperature feedback) \\ \hline
+        \textbf{Communication Interfaces} & CAN, Ethernet, USB 3.0, Serial (RS232/RS485), GPIO \\ \hline
+        \textbf{Software Capabilities} & Real-time navigation, control, diagnostics, and data logging \\ 
+        & Modular autonomy framework for MPC, RL, and SLAM integration \\ \hline
+        \textbf{Field Operation} & Endurance: $\sim$3 hours under typical load \\ 
+        & Max speed: $\sim$2.5 m/s \\ 
+        & Remote or fully autonomous operation modes \\ \hline
+    \end{tabular}
+\end{table}
+\noindent
+The specifications highlight the microAmpere balance between portability and computational power. The distributed computing setup provides sufficient resources for advanced autonomy tasks while maintaining low latency in the control loop. The integrated sensors enable precise positioning and rich perception, making it an ideal testbed for advanced control, SLAM, and sensor fusion algorithms in dynamic maritime environments.

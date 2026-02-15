@@ -1,0 +1,13 @@
+\subsection{Exteroceptive Sensors and Side Scan Sonar}
+Exteroceptive sensors measure the external world, and in robotics this typically includes cameras, LiDAR, radar, and sonar. Cameras and LiDAR rely on light and are extremely effective in clear air environments, but their performance degrades sharply underwater. Sound, however, propagates efficiently in water and allows perception even in dark, turbid, or visually obstructed conditions. Side scan sonar is a specialized form of acoustic imaging designed to capture high resolution seafloor information across wide swaths, making it particularly useful for marine mapping and navigation tasks.
+\\ \\
+A side scan system emits two fan shaped beams to port and starboard, measuring the intensity of acoustic returns across the seabed. These intensity patterns reveal structure, texture, and objects, which makes the sensor ideal for environmental perception and feature extraction. In a SLAM context, the side scan data forms a sequence of local 2D images that are later transformed into Cartesian grid maps. These local maps are used for landmark detection, data association, loop closure reasoning, and finally global map construction.
+\\ \\
+Using side scan sonar for SLAM also enables downstream applications such as obstacle avoidance, seabed classification, and autonomous mission planning. Once a consistent global map and trajectory are produced, the system can identify hazardous areas, detect objects of interest, and support high level decision making for the autonomous vessel. Thus, understanding the fundamental sensing mechanism of side scan sonar is essential for leveraging its data effectively throughout the mapping pipeline.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.65\linewidth]{Pictures/Sonar_Theory/Exteroceptive_Sensors_and_Side_Scan_Sonar/Side_scan_sonar.png}
+    \caption{Diagram of side scan sonar.\textsuperscript{\cite{side_scan_sonar_picture}}}
+    \label{fig:sonar-theory-sonar-side-scan-sonar-picture}
+\end{figure}
+

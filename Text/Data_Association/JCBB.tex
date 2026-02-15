@@ -1,0 +1,154 @@
+\subsection{JCBB}
+\subsubsection{Overview}
+Joint Compatibility Branch and Bound (JCBB) is a robust data association method designed for feature based SLAM systems, where a single wrong association can corrupt the entire map and cause catastrophic estimation failure. Unlike nearest neighbour approaches that evaluate each measurement to landmark match independently, JCBB evaluates entire sets of associations and accepts only those that are statistically compatible when considered jointly. This is essential in SLAM, because robot pose uncertainty induces strong correlations between all landmark predictions, even if each individual pairing lies inside its own Mahalanobis gate, the combination may still be geometrically inconsistent once correlations are accounted for. JCBB directly addresses this by enforcing that both individual compatibility and joint compatibility must hold before accepting any association set.
+\\ \\
+The core philosophy behind JCBB is as follows, a measurement sequence should only be associated with landmarks if the entire set of correspondences could realistically have been produced by the same robot pose under the SLAM covariance. This makes JCBB highly robust in ambiguous situations, especially when multiple landmarks fall inside overlapping covariance ellipses by rejecting any combination of matches that is inconsistent with the systems uncertainty geometry. JCBB uses a branch and bound search to efficiently explore the combinatorial hypothesis space, pruning branches as soon as joint or individual compatibility fails. Although the worst case complexity is exponential, branch and bound pruning and covariance structure make the algorithm practical for modest numbers of measurements, and therefore well suited for local SLAM updates in this thesis. \cite{JCBB}
+
+
+
+\subsubsection{Mathematical Preparation for JCBB}
+JCBB builds directly on the prediction and gating machinery already defined in the previous section on Gating (See equation \eqref{eq:data-association-mahalanobis-distance}). For each landmark $j$, the predicted measurement
+$$
+    \hat{z}_j = h(\hat{x})
+$$
+and the innovation
+$$
+    \nu_j = z - \hat{z}_j
+$$
+are identical to those used for Mahalanobis gating. Likewise, the linearised measurement Jacobian $H_j$ and the innovation covariance
+$$
+    S_j = H_j P H_j^\top + R
+$$
+are exactly the same quantities introduced in the Gating subsection and need not be recomputed differently for JCBB (See Equation \eqref{eq:data-association-innovation-covariance}). Individual compatibility is therefore unchanged:
+$$
+    d_j^2 = \nu_j^\top S_j^{-1} \nu_j < \gamma
+$$
+where $\gamma$ is the $\chi^2$ threshold for a 2D measurement (See Equation \eqref{eq:data-association-mahalanobis-distance}).
+\\ \\
+In addition, JCBB extends the gating test from individual compatibility tests, to entire association hypotheses. Here assume a batch of $m$ measurements $z_1,\ldots,z_m$, and that a hypothesis
+$$
+    a = \{ (z_1 \leftrightarrow j_1),\; (z_2 \leftrightarrow j_2),\; \ldots,\; (z_m \leftrightarrow j_m) \}
+$$
+assigns measured landmark $z_k$ to landmark $j_m$.
+\\ \\
+Then, the stacked innovation vector is formed simply by concatenating the individual innovations already defined in the Gating section (See Equation \eqref{eq:data-association-mahalanobis-distance}):
+\begin{equation}
+    \nu_a =
+    \begin{bmatrix}
+        \nu_{j_1} \\
+        \nu_{j_2} \\
+        \vdots \\
+        \nu_{j_m}
+    \end{bmatrix}
+    \label{eq:data-association-jcbb-inovation}
+\end{equation}
+Similarly, the stacked Jacobian is
+\begin{equation}
+    J_a =
+    \begin{bmatrix}
+        H_{j_1} \\
+        H_{j_2} \\
+        \vdots \\
+        H_{j_m}
+    \end{bmatrix}
+    \label{eq:data-association-jcbb-jacobian}
+\end{equation}
+where each $H_{j_k}$ is the same per landmark Jacobian used in the standard gating test.
+\\ \\
+The block diagonal measurement noise is
+$$
+    R_a = \mathrm{diag}(R,\ldots,R)
+$$
+again using the same noise model $R$ defined earlier.
+\\ \\
+To compute joint compatibility we also require the full SLAM covariance $P$, which contains all pose and landmark uncertainties and their cross correlations. For the SLAM state
+\begin{equation}
+    X =
+    \begin{bmatrix}
+        x \\ m_1 \\ \vdots \\ m_N
+    \end{bmatrix}
+    \label{eq:data-association-full-slam-state}
+\end{equation}
+where x is robot pose and $m_N$ are landmarks poses, the covariance has the block structure
+\begin{equation}
+    P =
+    \begin{bmatrix}
+        P_{xx} & P_{xL} \\
+        P_{Lx} & P_{LL}
+    \end{bmatrix}
+    \label{eq:data-association-full-slam-state-covariance}
+\end{equation}
+where $P_{xx}$ is the robot pose covariance, $P_{xL}$ are pose to landmark cross covariances, and $P_{LL}$ contains all landmark to landmark covariances.
+\\ \\
+This is the same covariance used in the gating expression $S_j = H_j P H_j^\top + R$, but here it must be applied to the stacked hypothesis.
+\\ \\
+With these ingredients, the joint innovation covariance becomes
+$$
+    S_a = J_a P J_a^\top + R_a ,
+$$
+which is a direct extension of the gating covariance $S_j$ to the stacked hypothesis.
+\\ \\
+In the end JCBB declares a hypothesis $a$ statistically valid if gating conditions are met (See equation \eqref{eq:data-association-mahalanobis-distance})
+\begin{equation}
+    d_a^2 = \nu_a^\top S_a^{-1} \nu_a < \gamma
+    \label{eq:data-association-jcbb-mahalanobis-distance}
+\end{equation}
+This ensures that all proposed associations in the hypothesis are mutually consistent under the full SLAM covariance $P$, not just individually inside their own gates.
+
+
+
+\subsubsection{Covariance Structure and Practical Extraction}
+JCBB relies on the full SLAM covariance $P$ introduced earlier in \eqref{eq:data-association-full-slam-state-covariance}, because the joint compatibility test must account for how pose uncertainty and landmark correlations interact. The pose block $P_{xx}$ describes local pose uncertainty, the cross terms $P_{xL}$ determine how pose errors map into each landmark prediction, and the landmark to landmark block $P_{LL}$ captures how all landmarks are correlated through past robot motion. In gating, this covariance appears inside the per landmark expression $S_j = H_j P H_j^\top + R$. JCBB uses the same idea but applies it to the entire stacked hypothesis, requiring all blocks of $P$ rather than only $P_{xx}$.
+\\ \\
+In classical EKF–SLAM the full covariance $P$ is explicitly maintained, so accessing any subblock is immediate. Modern graph based optimizers used in this project, however, do not store $P$ directly. Instead, they keep uncertainty implicitly in an internal factorization. As a result the cost of extracting covariance blocks differs greatly, the pose covariance $P_{xx}$ is cheap to obtain, but retrieving $P_{xL}$ requires more computation, and obtaining $P_{LL}$ is significantly slower. The details behind this behaviour are explained fully in the \textit{``Optimizer''} chapter, but the key point for DA is simple, different blocks of $P$ have very different extraction/computational costs.
+
+
+
+\subsubsection{Local vs Global JCBB Usage}
+Because of the different costs involved in retrieving the various covariance blocks, JCBB is applied with different levels of covariance information depending on the DA scenario. In short range, frame to frame operation the uncertainty is dominated by the robot pose, meaning that $P_{xx}$ alone is sufficient for filtering and compatibility checks. Using only $P_{xx}$ keeps the computation fast and lightweight, and in practice collapses the decision to a NN style algorithm outcome whenever only a single candidate survives gating. When several landmarks fall inside the gate, JCBB cannot evaluate mutual consistency without $P_{xL}$ and $P_{LL}$ and therefore reduces to selecting the candidate with the smallest individual Mahalanobis distance, again similar behaviors to NN algorithm. This behavior is acceptable locally because 2D local map sonar landmarks are sparse, well separated, and ambiguous local configurations are rare.
+\\ \\
+Global DA is different. When the global gate suggests that a loop closure may be present, the correlations between multiple landmarks become important, and JCBB must rely on the full covariance structure. In this regime the blocks $P_{xL}$ and $P_{LL}$ are required in addition to $P_{xx}$ to evaluate true joint compatibility across all candidate associations. Extracting these blocks is significantly more expensive, so full JCBB is used only during loop closure attempts and never during routine short range mapping. The loop closure pipeline and its use of full covariance JCBB are described in detail in the subsequent chapter. The important point is that almost all DA steps run in the fast local mode, while full joint checks are required only during the relatively rare loop closure events, meaning the overall computational cost remains well balanced in theory.
+
+
+
+\subsubsection{JCBB Algorithm}
+With all compatibility machinery defined in the previous subsections, the JCBB algorithm itself is quite intuitive. The goal is simply to search over all feasible associations for a batch of measurements, but to prune impossible or inconsistent branches as early as possible using the individual and joint tests already introduced.
+\\ \\
+Assume $m$ measurements $\{z_1,\dots,z_m\}$ are obtained at the same robot pose, and from the Gating stage each measurement landmark $z_k$ has a (usually small) gated candidate set $\mathcal{C}_k = \{j_1,\dots,j_{n_k}\}$. JCBB processes the measurements sequentially from $1$ to $m$ and incrementally builds a hypothesis
+$$
+    a = \{ (z_1\!\leftrightarrow\!j_1),\; (z_2\!\leftrightarrow\!j_2), \dots \}
+$$
+At recursion depth $k$, JCBB tries assigning measurement $z_k$ to:
+\begin{itemize}
+    \item one of its gated landmarks $j \in \mathcal{C}_k$, or
+    \item a null association (meaning $z_k$ does not match any landmark)
+\end{itemize}
+\noindent
+For each attempted assignment, JCBB performs the following steps:
+\begin{enumerate}
+    \item \textbf{Individual compatibility:} The assignment $(z_k \!\leftrightarrow\! j)$ must satisfy the same Mahalanobis gate $d_j^2 < \gamma$ defined earlier (see \eqref{eq:data-association-mahalanobis-distance}). If it fails this test, the branch is discarded immediately.
+    \item \textbf{Partial joint assembly:} JCBB forms the partial stacked innovation vector $\nu_a$ (See Equation \eqref{eq:data-association-jcbb-inovation}) and partial stacked Jacobian $J_a$ (See Equation \eqref{eq:data-association-jcbb-jacobian})
+    \item \textbf{Joint compatibility:} Using the covariance blocks of $P$ appropriate for the current DA mode (local or global), JCBB evaluates partial joint Mahalanobis consistency (See Equation \eqref{eq:data-association-jcbb-mahalanobis-distance}) If the partial hypothesis is already inconsistent, the entire branch is pruned.
+    \item \textbf{Branch bound pruning:} JCBB computes a simple bound on how many additional associations the remaining measurements could contribute. If even the best case completion cannot beat the current best hypothesis size, the branch is pruned without further exploration.
+\end{enumerate}
+\noindent
+JCBB continues descending the tree, exploring only branches that remain individually and jointly compatible and that still have the potential to outperform the best hypothesis found so far. This pruning is extremely powerful, in practice the vast majority of branches are rejected early because joint compatibility is a strong global constraint, and even small inconsistencies in geometry or covariance structure immediately invalidate the hypothesis.
+\\ \\
+Once all measurements have been processed, JCBB returns the hypothesis containing the largest number of jointly compatible associations. If several hypotheses have the same size, JCBB selects the first consistent one encountered. The key result is that JCBB will always return the maximal jointly compatible set, if a consistent configuration exists under the SLAM covariance $P$, JCBB is guaranteed to find it.
+\\ \\
+This behaviour makes JCBB far more reliable than NN or gating alone, especially when multiple landmarks lie inside overlapping uncertainty ellipses. While NN commits immediately to the closest candidate and can be misled by local ambiguity, JCBB evaluates full association sets under the joint uncertainty model, providing a principled and highly robust DA mechanism suitable for both local updates and loop closure events in this thesis.
+
+
+
+\subsubsection{FastJCBB}
+Several accelerated variants of JCBB exist, most notably FastJCBB \cite{FastJCBB}, which aim to reduce the computational cost of the joint compatibility checks. Classical JCBB must repeatedly assemble and invert the joint covariance $S_a$ as a hypothesis grows, giving an $O(m^2)$ update cost for $m$ measurements. FastJCBB exploits the conditional independence structure of measurements taken at the same pose to update the joint test incrementally, avoiding full recomputation and greatly reducing per step cost. Importantly, FastJCBB produces the exact same associations as classical JCBB, the improvement is purely computational, not algorithmic.
+\\ \\
+However, the exponential nature of the underlying branch and bound search remains. These faster variants perform well only when each measurement has a modest number of gated candidates. In the context of SSS SLAM this condition is naturally satisfied, local 2D sonar map frames typically contain only 1-5 usable landmarks per measurement, as reported in Haraldstads master thesis \cite{side_scan_sonar_master_thesis}. This makes JCBB and its fast variants practical and reliable for the small, sparse landmark sets encountered in underwater mapping.
+
+
+
+\subsubsection{Practical Use and Limitations}
+JCBB is most effective in exactly the situations where NN algorithm becomes unreliable, when pose uncertainty causes several landmark ellipses to overlap and multiple candidates pass the Mahalanobis gate. By evaluating full association sets under the SLAM covariance, JCBB is able to reject geometrically inconsistent combinations that NN would accept, providing strong protection against false matches that could corrupt the map. This robustness makes JCBB particularly valuable for the DA tasks in this thesis, where even a single incorrect association may undermine both local mapping and loop closure verification.
+\\ \\
+JCBB, however, is not a general purpose solution. Its search complexity grows exponentially with the number of measurements, and the covariance information it requires can be expensive to extract from modern incremental optimizers. It also inherits the limitations of linearised compatibility tests, meaning that large pose errors or badly predicted landmark geometry may cause all hypotheses to be rejected. For these reasons, JCBB is applied with different covariance detail rather than being turned on or off. In this thesis JCBB is always used, but in two modes, a fast local mode that uses only $P_{xx}$ and therefore effectively collapses to a NN style outcome when several landmarks lie inside the gate, and a full global mode that incorporates $P_{xL}$ and $P_{LL}$ during loop closure checks. In ordinary short range mapping this makes JCBB lightweight and efficient, while during loop closure it provides the full robustness of joint compatibility when it matters most. This in theory keeps the front end fast in routine operation while still ensuring strong protection against false associations in the rare but critical global events.
+

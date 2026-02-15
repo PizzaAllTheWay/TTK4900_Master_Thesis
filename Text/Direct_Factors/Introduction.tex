@@ -1,0 +1,14 @@
+\subsection{Introduction}
+In contrast to complex factors such as odometry or landmark constraints that require state propagation, data association, or nonlinear optimization, some sensor measurements can be directly converted into factor graph constraints with minimal processing.  
+\\ \\
+These are referred to as \textit{``direct factors''}. They provide immediate information about the system state, typically through absolute measurements such as position or orientation. For the microAmpere ASV, one of the main direct factors is the GNSS factor, which directly relates the estimated vehicle pose to globally referenced position and heading measurements obtained from the dual antenna GNSS system.  
+\\ \\
+A direct factor acts as an event trigger in the estimation process. When a new measurement event occurs, such as a GNSS update or a landmark detection, the IMU preintegration is paused, a new odometry pose node is created, and the preintegrated IMU factor is added between the previous and current poses. The new measurement is then attached as a unary direct factor to the latest pose before the optimizer updates the state estimate, the preintegration is reset, and continuous integration resumes. This mechanism ensures that all direct measurements remain synchronized with the factor graph and that each event driven update refines the system state in real time without introducing unnecessary intermediate nodes that have nothing attached to it.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.0\linewidth]{Pictures/Direct_Factors/Introduction/GNSS_Factor.png}
+    \caption{Example of a direct factor graph structure with unary measurement factors such as GNSS, each adding an absolute constraint on position and orientation directly to the associated pose/odometry node.\textsuperscript{\cite{GNSS_Factor}}}
+    \label{fig:direct-factors-unary-factor-example}
+\end{figure}
+
+

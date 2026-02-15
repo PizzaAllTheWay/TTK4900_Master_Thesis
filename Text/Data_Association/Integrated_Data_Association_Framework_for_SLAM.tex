@@ -1,0 +1,59 @@
+\subsection{Integrated Data Association Framework for SLAM}
+The complete DA pipeline combines local JCBB, global JCBB, descriptor based loop closure triggering, and landmark aging into a single unified framework. Each new scan follows the same sequence of operations, switching between local and global modes depending on whether a loop closure is likely.
+
+
+
+\subsubsection{Processing Each New Scan}
+For every incoming scan, the system first determines whether loop closure is plausible. This decision is made before any geometric DA step:
+\begin{itemize}
+    \item Perform descriptor similarity checks using a FLANN Matcher on all submaps older than the local horizon $N$. Young submaps are ignored to avoid trivially matching against very recent poses
+    \item A periodic fallback trigger (eks every 50 scans) is evaluated to guard against missed opportunities
+\end{itemize}
+\noindent
+If any descriptor match exceeds a predefined threshold or stands out strongly from all others, the system marks the scan as a loop closure candidate.
+
+
+
+\subsubsection{Local vs Global DA Branch}
+Once the trigger phase is complete, the DA mode is selected:
+\begin{itemize}
+    \item \textbf{If loop closure is suspected:} The system switches into global mode. A wide \emph{``global gating''} step is applied to the older map region, yielding a larger and more ambiguous candidate set. JCBB is then run using the full covariance structure $P_{xx},P_{xL},P_{LL}$ to verify the loop closure. This step is expensive, but it is executed rarely
+    \item \textbf{Otherwise (default case):} Local DA is performed. A tight \emph{``local gate''} is applied to the most recent $N$ submaps, producing only a few spatially separated candidates. JCBB then runs using only $P_{xx}$, which is cheap to extract and behaves similarly to an NN method when only a single candidate survives. This mode dominates runtime and ensures real-time performance
+\end{itemize}
+
+
+
+\subsubsection{Landmark Aging}
+Landmark management is handled via a simple aging mechanism:
+\begin{itemize}
+    \item Newly observed landmarks begin as ``young'' and remain inside the local window for $N$ scans
+    \item Each scan increments the age of all young landmarks
+    \item Once a landmark exceeds age $N$, it becomes an ``old'' landmark and joins the pool considered for loop closure triggering
+    \item Old landmarks do not need further aging, they remain in the global set indefinitely
+\end{itemize}
+
+
+
+\subsubsection{Landmark Revalidation}
+If an old landmark is successfully matched and passes JCBB during loop closure verification, it is revalidated:
+\begin{itemize}
+    \item Its age is reset to zero
+    \item It re-enters the local map as a young landmark
+\end{itemize}
+\noindent
+This prevents the system from repeatedly treating the same valid landmark as an old loop closure candidate and improves long term consistency.
+
+
+
+\subsubsection{Summary of the Full Pipeline}
+Putting everything together, each scan proceeds as follows:
+\begin{enumerate}
+    \item \textbf{Loop closure trigger}: Evaluate descriptor similarity (FLANN) + periodic check on all submaps older than $N$
+    \item \textbf{If triggered}: Run global gating and full JCBB using $P_{xx},P_{xL},P_{LL}$ to verify loop closure
+    \item \textbf{If not triggered}: Run local gating and lightweight JCBB using only $P_{xx}$ on recent submaps
+    \item \textbf{Landmark aging}: Age all young landmarks, those exceeding $N$ join the loop closure candidate pool
+    \item \textbf{Landmark revalidation}: Any old landmark confirmed by JCBB becomes young again
+\end{enumerate}
+\noindent
+
+

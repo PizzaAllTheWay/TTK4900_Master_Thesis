@@ -1,0 +1,435 @@
+\subsection{ASV Motion and Measurement Models}
+\subsubsection{Overview}
+This chapter presents the mathematical framework used to model the motion dynamics and sensor measurements of the ASV. Two main modeling approaches are discussed, the nonlinear 6 DOF marine craft model developed by Fossen \cite{fossen_marine_craft_model}, and the Inertial Navigation System (INS) based kinematic model described in Edmund Brekke book on Sensor Fusion \cite{sensor_fusion_book}. Both formulations provide complementary perspectives on vehicle motion, Fossen's model emphasizes a physically consistent hydrodynamic representation, while the INS model focuses on inertial propagation and sensor fusion suitable for real-time navigation.  
+\\ \\
+The chapter begins by introducing Fossen's marine craft model, which captures the rigid body and hydrodynamic behavior of marine vehicles through a compact matrix vector formulation that includes added mass, Coriolis, damping, and restoring effects. The INS based kinematic model is then presented as the practical implementation used in this work, describing the evolution of position, velocity, and attitude from inertial data while modeling sensor biases and stochastic errors. Aiding measurements from a dual antenna GNSS system are incorporated to correct drift and estimate heading. Although Fossen's model provides higher physical fidelity, it requires extensive parameter identification, whereas the INS model achieves sufficient accuracy for SLAM and local navigation when aided by GNSS. Thus, the INS based approach is chosen as the optimal balance between simplicity, computational efficiency, and practical performance.
+
+
+
+\subsubsection{Kinetic Motion Model}
+The kinetic motion model employed in this work is based on Fossens nonlinear 6 DOF marine craft formulation, which provides a unified mathematical framework for describing the dynamic behavior of marine vehicles \cite{fossen_marine_craft_model}. This model captures both rigid body and hydrodynamic effects using a compact matrix vector representation, making it suitable for analysis, control, and simulation of ships, underwater vehicles, and surface vessels. By bridging classical rigid body mechanics with hydrodynamic theory, the formulation offers a complete description of marine craft dynamics while preserving key physical properties such as symmetry, passivity, and energy consistency.
+\\ \\
+The general 6 DOF equations of motion can be written as
+$$
+    \mathbf{M}\dot{\boldsymbol{\nu}} + \mathbf{C}(\boldsymbol{\nu})\boldsymbol{\nu} + \mathbf{D}(\boldsymbol{\nu})\boldsymbol{\nu} + \mathbf{g}(\boldsymbol{\eta}) = \boldsymbol{\tau}
+$$
+where $\boldsymbol{\eta} = [x, y, z, \phi, \theta, \psi]^\top$ represents position and orientation, and $\boldsymbol{\nu} = [u, v, w, p, q, r]^\top$ denotes linear and angular velocities in the body frame. The vector $\boldsymbol{\tau}$ contains external forces and moments acting on the vessel from propulsion, wind, waves, and current. This formulation expresses the total balance between inertia, Coriolis, damping, and restoring forces on the left hand side, and all external excitations on the right hand side, forming the foundation for the dynamics of any marine craft.  
+\\ \\
+The inertia matrix $\mathbf{M}$ consists of both rigid body and added mass contributions,
+$$
+    \mathbf{M} = \mathbf{M}_{RB} + \mathbf{M}_A
+$$
+where $\mathbf{M}_{RB}$ represents the rigid body mass and inertia, while $\mathbf{M}_A$ captures the hydrodynamic added mass caused by the acceleration of surrounding water as the hull moves. The added mass terms are particularly important for underwater and high speed vehicles, as they significantly influence acceleration response and stability. This total inertia matrix determines how the craft resists changes in motion, acting as a coupling term between linear and angular accelerations.  
+\\ \\
+The Coriolis and centripetal effects are similarly expressed as
+$$
+    \mathbf{C}(\boldsymbol{\nu}) = \mathbf{C}_{RB}(\boldsymbol{\nu}) + \mathbf{C}_A(\boldsymbol{\nu})
+$$
+with $\mathbf{C}_{RB}$ and $\mathbf{C}_A$ representing the rigid body and added mass contributions, respectively. These matrices account for dynamic coupling between translational and rotational motion, such as how a turn induces sway or roll. The Coriolis matrix is skew-symmetric, ensuring that it does not contribute to net energy gain or loss, only redistributing kinetic energy among the motion axes.  
+\\ \\
+The matrix $\mathbf{D}(\boldsymbol{\nu})$ models hydrodynamic damping from viscous drag, wave radiation, and flow separation effects. It typically includes linear damping terms valid for small velocities and nonlinear or quadratic terms that dominate at higher speeds. The damping effects are always dissipative, converting kinetic energy into heat or wave energy, thus stabilizing the system over time.  
+\\ \\
+The restoring forces and moments $\mathbf{g}(\boldsymbol{\eta})$ describe gravitational and buoyancy effects, depending on the vehicles geometry and displacement. These terms act to return the vessel to equilibrium when displaced, defining roll, pitch, and heave stability through hydrostatic stiffness. For surface vessels, the restoring forces are strongly dependent on metacentric heights and the waterplane area, while for submerged vehicles, they depend mainly on the distance between the centers of gravity and buoyancy.  
+\\ \\
+The kinematic relationships between the body and NED frames are given by
+$$
+    \dot{\boldsymbol{\eta}} = \mathbf{J}(\boldsymbol{\eta})\boldsymbol{\nu}
+$$
+where $\mathbf{J}(\boldsymbol{\eta})$ is a block diagonal transformation matrix containing the rotation matrix $R_b^n$ for translational motion and $T(\phi, \theta)$ for angular motion. This mapping relates the velocity expressed in the body frame to the rate of change of position and attitude in the navigation frame, and can be implemented using either Euler angles or quaternions to avoid singularities.  
+\\ \\
+Environmental effects such as ocean currents, wind, and wave disturbances can be included by introducing the relative velocity $\boldsymbol{\nu}_r = \boldsymbol{\nu} - \boldsymbol{\nu}_c$, where $\boldsymbol{\nu}_c$ is the current velocity expressed in the body frame. This modifies the hydrodynamic forces and damping terms to account for the vehicles motion relative to the surrounding water, which is essential for accurate modeling of drift and current induced forces.  
+\\ \\
+For surface vessels, the equations can be simplified to the planar 3 DOF surge, sway, and yaw model:
+$$
+    \mathbf{M}\dot{\boldsymbol{\nu}} + \mathbf{C}(\boldsymbol{\nu})\boldsymbol{\nu} + \mathbf{D}(\boldsymbol{\nu})\boldsymbol{\nu} = \boldsymbol{\tau}
+$$
+where $\boldsymbol{\nu} = [u, v, r]^\top$. This reduced model captures the dominant motion in the horizontal plane and is widely used for uncrewed surface vehicles and control applications where roll, pitch, and heave motions are negligible.
+\\ \\
+The full nonlinear state space representation of Fossen's marine craft model can be written as
+$$
+    \dot{\mathbf{x}} = f(\mathbf{x}, \mathbf{u}) =
+    \begin{bmatrix}
+        \dot{\boldsymbol{\eta}} \\
+        \dot{\boldsymbol{\nu}}
+    \end{bmatrix}
+    =
+    \begin{bmatrix}
+        \mathbf{J}(\boldsymbol{\eta})\boldsymbol{\nu} \\
+        \mathbf{M}^{-1}\big(\boldsymbol{\tau} - \mathbf{C}(\boldsymbol{\nu})\boldsymbol{\nu} - \mathbf{D}(\boldsymbol{\nu})\boldsymbol{\nu} - \mathbf{g}(\boldsymbol{\eta})\big)
+    \end{bmatrix}
+$$
+where
+$$
+    \mathbf{x} =
+    \begin{bmatrix}
+        \boldsymbol{\eta} & \boldsymbol{\nu}
+    \end{bmatrix}^\top
+    =
+    [\,x,\, y,\, z,\, \phi,\, \theta,\, \psi,\, u,\, v,\, w,\, p,\, q,\, r\,]^\top,
+    \qquad
+    \mathbf{u} = \boldsymbol{\tau}
+$$
+Here, the first part of the function $f(\mathbf{x}, \mathbf{u})$ describes the kinematic mapping from body frame velocities to the time derivative of position and attitude through the transformation matrix $\mathbf{J}(\boldsymbol{\eta})$, while the second part represents the vehicle kinetics defined by Newton-Euler dynamics. The term $\mathbf{M}^{-1}$ acts as an inverse inertia operator, mapping the net generalized forces and moments (after accounting for Coriolis, damping, and restoring effects) to the acceleration in the body frame.  
+\\ \\
+This formulation provides a complete and compact representation of the vessels motion, directly linking control inputs and environmental disturbances to the time evolution of the vehicles state.
+\\ \\
+Fossen's formulation exhibits several key properties, the mass matrix $\mathbf{M}$ is symmetric and positive definite, the Coriolis matrix $\mathbf{C}(\boldsymbol{\nu})$ is skew-symmetric, and the damping matrix $\mathbf{D}(\boldsymbol{\nu})$ is positive definite. These properties guarantee passivity and energy conservation, ensuring that the system dissipates energy over time and remains physically consistent. This structure also provides a strong foundation for control system design and stability analysis, as it aligns with fundamental principles of energy based modeling and Lyapunov stability.
+
+
+
+\subsubsection{Kinematic Motion Model}
+The kinematic motion model adopted in this work is based on the Inertial Navigation System (INS) formulation, which describes the time evolution of a vehicles position, velocity, and attitude as functions of inertial sensor measurements \cite{sensor_fusion_book}. Unlike hydrodynamic models that depend on physical parameters such as mass, damping, or buoyancy, the INS model is purely kinematic and relies solely on accelerometer and gyroscope data. This independence from the vehicles geometry, operating environment, and fluid interaction makes it well suited for generic navigation and SLAM applications, where a simplified yet robust representation of motion is sufficient for accurate state propagation between aiding measurements.
+\\ \\
+IMUs typically represent attitude using quaternions rather than Euler angles. This avoids singularities and ensures smooth rotational updates even under large orientation changes, making quaternion based propagation the standard approach for INS implementations.  
+\\ \\
+The continuous time state vector is defined as
+$$
+    \mathbf{x} =
+    \begin{bmatrix}
+        \mathbf{p}_{b/O}^{n} & \mathbf{v}_{b/O}^{n} & \mathbf{q} & \mathbf{b}_a & \mathbf{b}_g
+    \end{bmatrix}^\top
+$$
+where $\mathbf{p}_{b/O}^{n} = [x, y, z]^\top$ is the position of the body origin relative to the navigation frame, $\mathbf{v}_{b/O}^{n} = [v_x, v_y, v_z]^\top$ is the velocity in the same frame, $\mathbf{q}$ is the quaternion representing the rotation from body to navigation frame, and $\mathbf{b}_a$ and $\mathbf{b}_g$ are the accelerometer and gyroscope biases, respectively.  
+\\ \\
+The position and velocity states describe translational motion in the navigation frame, while the quaternion captures attitude evolution through rotational kinematics. The bias states account for the slowly varying sensor offsets that develop over time due to temperature changes, component aging, and other environmental factors. Together, these quantities form a complete minimal representation of the navigation state used in inertial systems, forming the basis for the continuous time kinematic model that governs their time evolution.  
+\\ \\
+The inertial navigation model therefore describes the kinematic evolution of the vehicles position, velocity, and attitude as driven by inertial sensor measurements. The foundation of this formulation is the deterministic, noise free relationship between translational and rotational motion, which forms the core of all INS propagation models.  
+\\ \\
+In the ideal case without any sensor errors, the motion of the sensor can be expressed as
+$$
+\begin{aligned}
+    \dot{\mathbf{p}}_{s/O}^{n} &= \mathbf{v}_{s/O}^{n} \\
+    \dot{\mathbf{v}}_{s/O}^{n} &= R_b^n(\mathbf{q})\,(R_s^b\,\mathbf{a}_m) + \mathbf{g}^n \\
+    \dot{\mathbf{q}} &= \tfrac{1}{2}\,\mathbf{q} \otimes (R_s^b\,\boldsymbol{\omega}_m)
+\end{aligned}
+$$
+where $\mathbf{p}_{s/O}^{n}$ and $\mathbf{v}_{s/O}^{n}$ are the position and velocity of the sensor with respect to an inertial reference frame like NED, $R_b^n(\mathbf{q})$ is the rotation matrix transforming vectors from the body frame to the navigation frame, and $R_s^b$ is the rotation matrix from the sensor to body frame. The measured quantities $\mathbf{a}_m$ and $\boldsymbol{\omega}_m$ are the specific force and angular rate readings provided by the IMU, expressed in the sensors own coordinate frame. These measurements are therefore related to the true body frame motion through the sensors fixed mounting orientation, such that $\mathbf{a}_m = \mathbf{a}_{s/b}^{s}$ and $\boldsymbol{\omega}_m = \boldsymbol{\omega}_{s/b}^{s}$.  
+\\ \\
+In practice, the inertial sensors are rarely placed exactly at the vehicles center of gravity (COG). When the sensor is offset by a position vector $\mathbf{r}_{s/b}^{b}$ from the body frame origin usually defined at the COG, the accelerations measured by the IMU no longer correspond directly to the translational accelerations of the vehicle. Instead, the rotational motion of the body introduces additional terms due to centripetal and tangential accelerations. The total acceleration of the sensor can then be expressed as
+$$
+    \mathbf{a}_{s/O}^{b} = \mathbf{a}_{b/O}^{b} + \boldsymbol{\alpha}_{b/O}^{b} \times \mathbf{r}_{s/b}^{b} + \boldsymbol{\omega}_{b/O}^{b} \times (\boldsymbol{\omega}_{b/O}^{b} \times \mathbf{p}_{s/b}^{b})
+$$
+where $\mathbf{a}_{b/O}^{b}$ is the linear acceleration of the body origin, $\boldsymbol{\omega}_{b/O}^{b}$ is the angular velocity of the body, and $\boldsymbol{\alpha}_{b/O}^{b}$ its angular acceleration. The second term represents the tangential acceleration component caused by rotational acceleration, while the third term corresponds to the centripetal acceleration arising from constant rotation. These effects are collectively known as the \textit{``lever arm effect''}, and they cause the IMU to measure accelerations that differ from those experienced at the COG.  
+\\ \\
+Accurately compensating for the lever arm effect requires knowledge of the exact mounting offset $\mathbf{p}_{s/b}^{b}$ and precise estimates of both angular velocity and angular acceleration. The latter is particularly difficult to obtain in real time, as most MEMS-based IMU (like microAmpere IMU) do not measure angular acceleration directly. Numerical differentiation of gyroscope signals amplifies measurement noise and introduces additional uncertainty, making real-time compensation computationally challenging and often unreliable.  
+\\ \\
+Therefore, in this master thesis work, it is assumed that the inertial sensors are mounted close to the vehicles center of gravity. For the microAmpere ASV, this assumption is valid since the IMU is physically located near the COG within the central electronics housing. As a result, the lever arm terms become negligible, and the simplified kinematic model given above provides an accurate and practical representation of the vehicle motion. This assumption greatly simplifies the mathematical model while retaining sufficient fidelity for navigation and SLAM applications.  
+\\ \\
+Under this assumption, the IMU can be considered approximately coincident with the body frame origin, effectively treating the sensor as rigidly aligned with the vehicles center of gravity. The motion model can then be expressed directly in terms of the body frame as
+$$
+\begin{aligned}
+    \dot{\mathbf{p}}_{b/O}^{n} &= \mathbf{v}_{b/O}^{n} \\
+    \dot{\mathbf{v}}_{b/O}^{n} &= R_b^n(\mathbf{q})\,\mathbf{a}_m + \mathbf{g}^n \\
+    \dot{\mathbf{q}} &= \tfrac{1}{2}\,\mathbf{q} \otimes \boldsymbol{\omega}_m
+\end{aligned}
+$$
+which defines the nominal, noise free kinematic model used in this work. It captures the translational and rotational motion of the ASV based solely on the IMUs accelerometer and gyroscope measurements, with attitude expressed through quaternion integration for smooth and singularity free orientation propagation.
+\\ \\
+In practice, the accelerometer and gyroscope measurements are not perfect and are affected by sensor biases and measurement noise. These imperfections cause the estimated position and attitude to drift over time, as small integration errors accumulate during motion. The measured sensor outputs can therefore be modeled as
+$$
+\begin{aligned}
+    \mathbf{a}_m &= R^{T}(q_t)\,(\mathbf{a_t} - \mathbf{g}) + \mathbf{a}_{bt} + \mathbf{a}_{n} \\
+    \boldsymbol{\omega}_m &= \boldsymbol{\omega}_t + \mathbf{\omega}_{bt} + \mathbf{\omega}_{n}
+\end{aligned}
+$$
+where $\mathbf{a}_m$ and $\boldsymbol{\omega}_m$ are the measured accelerations and angular rates, $\mathbf{a}_{bt}$ and $\mathbf{\omega}_{bt}$ denote slowly varying sensor biases, and $\mathbf{a}_{n}$ and $\mathbf{\omega}_{n}$ are zero mean Gaussian noise processes representing measurement uncertainty. The reason for choosing zero mean Gaussian noise processes representation is just to make calculations easier to manage, and usually inertial sensor noise can be approximated to a pure gaussian.  
+\\ \\
+While the previous kinematic model assumed ideal, noise free measurements, real inertial sensors inherently produce signals corrupted by both bias and random noise. These effects introduce long term drift in velocity, position, and orientation estimates if uncorrected. To account for this, the noise and bias terms are explicitly included in the dynamic equations.  
+\\ \\
+By substituting the noisy sensor models into the noise free kinematics, we obtain the full continuous time INS motion model that represents the true system behavior under realistic sensor conditions:
+$$
+\begin{aligned}
+    \dot{\mathbf{p}}_{b/O}^{n} &= \mathbf{v}_{b/O}^{n} \\
+    \dot{\mathbf{v}}_{b/O}^{n} &= R_b^n(\mathbf{q})\,(\mathbf{a}_m - \mathbf{a}_{bt} - \mathbf{a}_n) + \mathbf{g}^n \\
+    \dot{\mathbf{q}} &= \tfrac{1}{2}\,\mathbf{q} \otimes (\boldsymbol{\omega}_m - \mathbf{\omega}_{bt} - \mathbf{\omega}_n)
+\end{aligned}
+$$
+where $R_b^n(\mathbf{q})$ transforms body frame accelerations into the navigation frame according to the current orientation quaternion.  
+\\ \\
+This formulation captures the complete inertial motion propagation process, accounting for both deterministic motion and stochastic sensor effects. It forms the basis for all subsequent modeling of bias dynamics and sensor noise processes.
+\\ \\
+Inertial measurement systems such as accelerometers and gyroscopes inherently suffer from drift over time, as they measure relative motion rather than absolute quantities. Small integration errors in acceleration and angular rate accumulate, causing increasing uncertainty in position and attitude estimates. To account for this phenomenon, bias terms are introduced to represent slow, time varying offsets in the sensor readings. Accurate bias modeling is essential for achieving reliable and stable navigation performance, particularly for low cost MEMS-based sensors where bias instability is a dominant error source.  
+\\ \\
+Sensor biases are typically represented as stochastic processes that evolve gradually over time. Several modeling approaches exist, each offering a trade off between realism and complexity. The simplest approach is the constant bias model,
+$$
+    \dot{\mathbf{b}} = 0
+$$
+which assumes a fixed, time invariant offset in the sensor readings. Although straightforward, this model is generally insufficient for practical applications since real world sensors exhibit continuous drift due to thermal, mechanical, and electronic variations.  
+\\ \\
+A more flexible formulation is the Wiener process, or better known as random walk model,
+$$
+    \dot{\mathbf{b}} = \mathbf{b}_n
+$$
+where $\mathbf{b}_n$ is a zero mean white noise process. This allows the bias to evolve stochastically over time, capturing unmodeled variations in sensor output. However, this model tends to be overly conservative, as the bias uncertainty grows without bound, making it unsuitable for long duration navigation where bounded behavior is required.  
+\\ \\
+A more realistic representation for modern inertial sensors is the first-order Gauss-Markov process,
+$$
+    \dot{\mathbf{b}} = -\tfrac{1}{\tau}\mathbf{b} + \mathbf{b}_n
+$$
+where $\tau$ is the correlation time constant that defines how quickly the bias decays toward zero. This model captures both short term fluctuations and long term drift, providing a balanced compromise between physical accuracy and numerical stability. It ensures that bias uncertainty remains bounded while reflecting the natural stochastic variation of real IMU behavior.  
+\\ \\
+Accordingly, the accelerometer and gyroscope biases are modeled as first order Gauss-Markov processes:
+$$
+\begin{aligned}
+    \dot{\mathbf{a}}_{bt} &= -p_{\mathbf{a}b}\,I\,\mathbf{a}_{bt} + \mathbf{a}_{w} \\
+    \dot{\mathbf{\omega}}_{bt} &= -p_{\mathbf{\omega}b}\,I\,\mathbf{\omega}_{bt} + \mathbf{\omega}_{w}
+\end{aligned}
+$$
+where $p_{\mathbf{a}b} = 1/\tau_a$ and $p_{\mathbf{\omega}b} = 1/\tau_g$ denote the inverse correlation times for the accelerometer and gyroscope bias models, respectively. The terms $\mathbf{a}_{w}$ and $\mathbf{\omega}_{w}$ represent zero mean white noise processes driving the bias evolution.  
+\\ \\
+This bias modeling framework provides a physically consistent and numerically stable representation of inertial sensor drift. By incorporating these bias dynamics, the INS model can accurately describe both the deterministic vehicle motion and the stochastic effects introduced by the inertial sensors.  
+\\ \\
+With the inclusion of bias dynamics, the complete continuous time true state kinematic model of the system is expressed as
+$$
+\begin{aligned}
+    \dot{\mathbf{p}}_{b/O}^{n} &= \mathbf{v}_{b/O}^{n} \\
+    \dot{\mathbf{v}}_{b/O}^{n} &= R_b^n(\mathbf{q})\,(\mathbf{a}_m - \mathbf{a}_{bt} - \mathbf{a}_n) + \mathbf{g}^n \\
+    \dot{\mathbf{q}} &= \tfrac{1}{2}\,\mathbf{q} \otimes (\boldsymbol{\omega}_m - \mathbf{\omega}_{bt} - \mathbf{\omega}_n) \\
+    \dot{\mathbf{a}}_{bt} &= -p_{\mathbf{a}b}\,I\,\mathbf{a}_{bt} + \mathbf{a}_{w} \\
+    \dot{\mathbf{\omega}}_{bt} &= -p_{\mathbf{\omega}b}\,I\,\mathbf{\omega}_{bt} + \mathbf{\omega}_{w}
+\end{aligned}
+$$
+This formulation constitutes the complete nonlinear inertial motion model, capturing both the deterministic kinematics of the vehicle and the stochastic processes that characterize real sensor behavior.
+\\ \\
+The complete INS model previously presented captures the full physical and stochastic behavior of the vehicle, incorporating both deterministic motion and random processes such as measurement noise and bias drift. While this representation accurately reflects real sensor behavior, it is often desirable to isolate the deterministic part of the dynamics to describe the nominal system behavior. This simplified formulation, known as the nominal state kinematic model, represents how the system would evolve in the absence of stochastic disturbances. It provides a clear and noise-free description of the vehicles motion based purely on inertial measurements, forming the foundation for state propagation in navigation and estimation frameworks.  
+\\ \\
+The nominal model assumes that all noise components are zero, leaving only the essential deterministic relationships between position, velocity, attitude, and sensor biases. In this formulation, the accelerometer and gyroscope measurements are treated as control inputs driving the systems motion. This perspective simplifies the dynamics while preserving the physical structure of the original model, allowing efficient and accurate propagation of the navigation states between external aiding updates.  
+\\ \\
+By removing the stochastic noise terms from the true state equations, the nominal state kinematic model becomes
+\begin{equation}
+    \dot{\mathbf{x}} = f(\mathbf{x}, \mathbf{u}) =
+    \begin{bmatrix}
+        \dot{\mathbf{p}}_{b/O}^{n} \\
+        \dot{\mathbf{v}}_{b/O}^{n} \\
+        \dot{\mathbf{q}} \\
+        \dot{\mathbf{a}}_b \\
+        \dot{\mathbf{\omega}}_b
+    \end{bmatrix}
+    =
+    \begin{bmatrix}
+        \mathbf{v}_{b/O}^{n} \\
+        R_b^n(\mathbf{q})\,(\mathbf{a}_m - \mathbf{a}_{b}) + \mathbf{g}^n \\
+        \tfrac{1}{2}\,\mathbf{q} \otimes (\boldsymbol{\omega}_m - \mathbf{\omega}_{b}) \\
+        -p_{\mathbf{a}b}\,I\,\mathbf{a}_b \\
+        -p_{\mathbf{\omega}b}\,I\,\mathbf{\omega}_b
+    \end{bmatrix}
+    \label{eq:kinematics-motion-model}
+\end{equation}
+where
+\begin{equation}
+    \mathbf{x} =
+    \begin{bmatrix}
+        \mathbf{p}_{b/O}^{n} & \mathbf{v}_{b/O}^{n} & \mathbf{q} & \mathbf{a}_b & \mathbf{\omega}_b
+    \end{bmatrix}^\top,
+    \qquad
+    \mathbf{u} =
+    \begin{bmatrix}
+        \mathbf{a}_m & \boldsymbol{\omega}_m
+    \end{bmatrix}^\top
+    \label{eq:kinematics-motion-model-states}
+\end{equation}
+Here, $\mathbf{p}_{b/O}^{n}$ and $\mathbf{v}_{b/O}^{n}$ represent the vehicles position and velocity expressed in the navigation frame, $\mathbf{q}$ denotes the attitude quaternion defining the rotation from the body to the navigation frame, and $\mathbf{a}_b$ and $\mathbf{\omega}_b$ represent the accelerometer and gyroscope biases, respectively. The parameters $p_{\mathbf{a}b} = 1/\tau_a$ and $p_{\mathbf{\omega}b} = 1/\tau_g$ correspond to the inverse correlation times governing the exponential decay rates of the bias dynamics.  
+\\ \\
+This nominal model represents the idealized, noise free motion of the vehicle as inferred from IMU measurements. It captures the deterministic propagation of position, velocity, attitude, and bias under perfect sensor conditions, serving as the baseline dynamic model for integrated navigation systems.  
+\\ \\
+In the real world, this motion model is never perfectly deterministic. Even though Equation \ref{eq:kinematics-motion-model} describes an ideal system, the actual process is continuously disturbed by sensor noise and model imperfections. Since this model is derived directly from the INS model, it effectively represents the IMU itself, and the IMU is a sensor with stochastic noise and bias drift. To account for these imperfections, a process noise term is introduced, characterized by the covariance matrix $\mathbf{Q}$.  
+\\ \\
+The true system evolution can therefore be represented as the nominal model driven by process noise
+$$
+    \dot{\mathbf{x}}_{\text{real}} = f(\mathbf{x}, \mathbf{u}) + \mathbf{G}\,\mathbf{n}_{\text{INS}},
+    \qquad
+    \mathbf{n}_{\text{INS}} \sim \mathcal{N}(\mathbf{0},\, \mathbf{Q})
+$$
+where $\mathbf{G}$ is the noise input matrix that maps the 12 dimensional process noise into the full 16 dimensional state space, and $\mathbf{Q}$ defines the covariance of the IMU noise sources. This formulation captures how the real system deviates from the ideal deterministic model due to stochastic disturbances originating from the inertial sensors.
+\\ \\
+The process noise covariance $\mathbf{Q}$ models how random accelerometer and gyroscope disturbances drive uncertainty into the system states over time. In this work, $\mathbf{Q}$ is assumed Gaussian, which makes the mathematics tractable and aligns well with the typical near Gaussian behavior of MEMS IMUs. The covariance is constructed from the standard deviations of the IMU noise parameters as  
+\begin{equation}
+    \mathbf{Q} =
+    \mathrm{diag}(
+        \sigma_a^2\mathbf{I}_3,\;
+        \sigma_\omega^2\mathbf{I}_3,\;
+        \sigma_{b_a}^2\mathbf{I}_3,\;
+        \sigma_{b_\omega}^2\mathbf{I}_3
+    )
+    \label{eq:process-noise-covariance}
+\end{equation}
+where  
+$\sigma_a$ and $\sigma_\omega$ are the accelerometer and gyroscope white noise densities, and $\sigma_{b_a}$ and $\sigma_{b_\omega}$ describe the random walk components of the accelerometer and gyroscope bias drift. Each parameter is 3D (x, y, z). These values are typically taken from the IMU datasheet or estimated empirically from static measurements using Allan variance analysis.  
+\\ \\
+It is important to note that while the full INS state $\mathbf{x}$ has 16 elements (position, velocity, attitude quaternion, and two bias vectors), $\mathbf{Q}$ only has 12 dimensions. This is because $\mathbf{Q}$ represents the \textit{``driving noise sources''}, accelerometer and gyro noise plus their bias drifts, rather than direct noise on the state itself. The position, velocity, and attitude uncertainties arise indirectly as this noise propagates through the system dynamics over time.  
+\\ \\
+How this propagation is carried out mathematically is handled through system linearization, transformation, and discretization of the process noise. These operations map the continuous time noise characteristics into discrete time uncertainty that spreads through all 16 states of the filter. The detailed formulation of this process, including the transformation matrices and covariance propagation equations, will be presented later in the \textit{``State Estimation''} chapter.  
+\\ \\
+For now, it is sufficient to understand that $\mathbf{Q}$ defines the statistical properties of the IMU noise processes that drive the uncertainty growth in the system. This provides the essential stochastic foundation for the subsequent estimation framework, where these disturbances are explicitly propagated and corrected using aiding measurements such as GNSS.
+\\ \\
+By separating deterministic kinematics from stochastic sensor effects, the INS formulation provides a structured foundation for real-time state estimation. This nominal model is particularly suited for use within an Error State Kalman Filter (ESKF), where it defines the expected system evolution between measurement updates and enables correction using external aiding sources such as GNSS or magnetometers.  
+\\ \\
+Overall, the INS based motion model offers a compact and computationally efficient representation of the ASVs dynamics. While it omits detailed hydrodynamic effects, its balance of simplicity, generality, and compatibility with sensor fusion frameworks makes it a robust and practical choice for autonomous surface vehicle navigation and SLAM applications.
+
+
+
+\subsubsection{Aiding Measurement Model}
+The aiding measurements are obtained from a dual antenna GNSS system that provides absolute position and heading information in the NED frame. The two antennas are rigidly mounted on the stern, one on the port side and one on the starboard side, at known offsets from the vessels COG. This setup enables direct estimation of both the vessels global position and its yaw orientation, offering an absolute reference that continuously corrects the drift accumulated in the INS.  
+\\ \\
+Accurate aiding of position and attitude is crucial for maintaining reliable long term navigation performance. While the INS can propagate the motion of the vessel accurately over short time spans, it inevitably accumulates errors due to sensor noise and bias drift. The GNSS updates counteract this drift by providing absolute position corrections, while the dual antenna baseline yields a precise heading measurement that stabilizes the yaw estimate, one of the most critical states for surface vessel guidance and control. Reliable yaw information directly improves trajectory tracking, waypoint following, and steering stability.  
+\\ \\
+For autonomous surface vessels like the microAmpere, roll and pitch angles can be neglected due to the platforms inherently stable catamaran style hull. The dual pontoons provide strong passive stability and a nearly constant deck attitude even under moderate disturbances. Consequently, the vessel motion is effectively modeled in two dimensions, considering surge, sway, and yaw, while the vertical position $z$ is retained from GNSS for completeness. This simplification reduces system complexity without sacrificing accuracy and aligns well with the physical behavior and operational characteristics of small, inherently stable surface craft.
+\\ \\
+Each GNSS receiver provides a position measurement expressed in the navigation frame as
+$$
+    \mathbf{z}_{p,i} = \mathbf{p}_{\text{GNSS}i/O}^{n}
+    = \mathbf{p}_{b/O}^{n} + R_b^n(\mathbf{q})\,\mathbf{p}_{\text{GNSS}i/b}^{b} + \mathbf{n}_{p,i}, 
+    \qquad i \in \{1,2\}
+$$
+where $\mathbf{p}_{b/O}^{n}$ denotes the body origin (COG) position in the navigation frame, $\mathbf{p}_{\text{GNSS}i/b}^{b}$ are the known lever arm offsets of each antenna expressed in the body frame, and $\mathbf{n}_{p,i}$ represents zero mean Gaussian measurement noise. Since both antennas are positioned forward of the COG, this transformation is necessary to align the raw GNSS positions with the INS state representation.  
+\\ \\
+From these two absolute position measurements, the relative vector between the antennas can be expressed in the navigation frame as
+$$
+    \mathbf{r}_{1/2}^{n} = \mathbf{r}_{GNSS1/GNSS2}^{n} = \mathbf{p}_{\text{GNSS2}/O}^{n} - \mathbf{p}_{\text{GNSS1}/O}^{n}
+$$
+This baseline vector defines the spatial relationship between the antennas and allows extraction of the vessels yaw angle $\psi$ through its horizontal components as
+$$
+    \psi = \text{atan2}(r_{1/2,y}^{n},\, r_{1/2,x}^{n})
+$$
+Here, $\psi$ represents the heading of the line connecting the port and starboard antennas relative to true north. The accuracy of the heading estimate depends on the baseline length, where a longer lateral separation provides greater sensitivity and higher precision. The dual antenna setup therefore yields a robust and drift free heading measurement that complements the attitude propagation performed by the INS.  
+\\ \\
+The two GNSS position measurements and the derived yaw angle are then combined into a single aiding measurement vector that provides both global position and orientation information. The complete GNSS measurement is expressed as
+$$
+    \mathbf{z}_{\text{GNSS}} =
+    \begin{bmatrix}
+        \mathbf{p}_{b/O}^{n} \\
+        \psi
+    \end{bmatrix}
+    = h(\mathbf{x}) + \mathbf{n}_{\text{GNSS}}
+$$
+where the nonlinear measurement function $h(\mathbf{x})$ relates the navigation state
+$$
+    \mathbf{x} =
+    \begin{bmatrix}
+        \mathbf{p}_{b/O}^{n} & \mathbf{v}_{b/O}^{n} & \mathbf{q} & \mathbf{b}_a & \mathbf{b}_g
+    \end{bmatrix}^\top
+$$
+to the observed quantities as
+\begin{equation}
+    h(\mathbf{x}) =
+    \begin{bmatrix}
+        \mathbf{p}_{b/O}^{n} + R_b^n(\mathbf{q})\,\mathbf{p}_{\text{GNSS1}/b}^{b} \\
+        \psi(\mathbf{q})
+    \end{bmatrix},
+    \qquad
+    \psi(\mathbf{q}) = \text{atan2}\!\big(2(q_w q_z + q_x q_y),\, 1 - 2(q_y^2 + q_z^2)\big)
+    \label{eq:aiding-measurement-model}
+\end{equation}
+In this formulation, the first component represents the transformed GNSS position measurement expressed in the navigation frame, while the second component computes the expected yaw angle $\psi$ directly from the attitude quaternion $\mathbf{q}$. This quaternion based expression provides the same horizontal heading angle as that obtained geometrically from the dual antenna baseline, ensuring a consistent definition of yaw across both the INS and aiding measurement models. The term $\mathbf{n}_{\text{GNSS}}$ denotes zero mean Gaussian noise combining both position and heading uncertainties, with covariance $\mathbf{R}_{\text{GNSS}} = \text{diag}(\mathbf{R}_{p}, \sigma_\psi^2)$.
+\\ \\
+For small autonomous surface vessels such as the MicroAmpere, the platform demonstrates inherently stable roll and pitch dynamics due to its catamaran style pontoon design. This hydrodynamic stability allows the assumption that roll and pitch angles remain close to zero during nominal operation, effectively reducing the attitude representation to a single dominant rotation about the vertical axis, corresponding to the yaw angle. With this simplification, the GNSS aiding measurements primarily correct horizontal position and heading, while small vertical displacements and tilting motions are neglected, as they have minimal impact on overall navigation accuracy.
+\\ \\
+The statistical characteristics of the aiding measurements are described by the covariance matrix $\mathbf{R}_{\text{GNSS}}$, which defines the uncertainty associated with both position and yaw observations. The GNSS measurement noise is modeled as a zero mean Gaussian process, as this assumption simplifies the mathematical formulation of the estimation problem and allows the use of linear statistical tools such as the Kalman filter. Furthermore, most sensor noise processes exhibit approximately Gaussian behavior, and therefore all models in this work adopt Gaussian noise representations for analytical tractability and consistency.
+$$
+    \mathbf{n}_{\text{GNSS}} \sim \mathcal{N}(\mathbf{0},\,\mathbf{R}_{\text{GNSS}})
+$$
+with covariance
+\begin{equation}
+    \mathbf{R}_{\text{GNSS}} =
+    \begin{bmatrix}
+        \sigma_x^2 & 0 & 0 & 0 \\
+        0 & \sigma_y^2 & 0 & 0 \\
+        0 & 0 & \sigma_z^2 & 0 \\
+        0 & 0 & 0 & \sigma_\psi^2
+    \end{bmatrix}
+    \label{eq:aiding-measurement-model-noise}
+\end{equation}
+where the diagonal entries represent the individual variances of the GNSS position and heading measurements. The horizontal position variances $\sigma_x^2$ and $\sigma_y^2$, together with the vertical variance $\sigma_z^2$, can either be taken from the GNSS receiver specifications or estimated empirically by collecting a sequence of static position samples and computing the sample covariance.  
+\\ \\
+While all GNSS measurement variances are influenced by external factors such as satellite visibility, signal quality, and atmospheric conditions, the yaw variance $\sigma_\psi^2$ introduces additional complexity due to its dependence on the geometric configuration of the dual antenna baseline. Unlike position variances, which can be directly related to the GNSS positional dilution of precision and signal quality, the yaw covariance is a nonlinear function of baseline length, relative orientation, and phase measurement accuracy between the two antennas. Analytical methods exist for modeling this relationship using differential carrier phase error propagation and baseline geometry. However, for practical implementation in this work, $\sigma_\psi^2$ is determined empirically by recording heading data under static or low dynamic conditions and computing the sample variance. This provides a realistic and representative characterization of the true heading uncertainty while inherently capturing the combined effects of baseline geometry and signal conditions.
+\\ \\
+In practice, the resulting covariance matrix $\mathbf{R}_{\text{GNSS}}$ provides a quantitative description of the expected accuracy of the aiding measurements and directly influences the filter update weighting. Accurate estimation of $\mathbf{R}_{\text{GNSS}}$ is therefore critical to achieve consistent sensor fusion performance and to maintain the correct balance between inertial propagation and GNSS correction.
+\\ \\
+In summary, the dual antenna GNSS system provides a reliable and mathematically well defined aiding source that delivers both absolute position and heading information in the navigation frame. By constraining the inertial navigation solution with globally referenced measurements, it effectively limits drift accumulation and ensures consistent long term state estimation. This makes the aiding model well suited for marine applications where stable attitude and accurate horizontal localization are of primary importance.
+
+
+
+\subsubsection{Landmark Measurement Model}
+The landmark measurement model establishes the mathematical relationship between the ASV pose and observable landmarks within the map. This formulation follows the classical range-bearing model commonly adopted in SLAM literature, as it provides a compact and geometrically consistent way of expressing 2D landmark observations \cite{sensor_fusion_book} \cite{side_scan_sonar_master_thesis}. The choice of the range-bearing model is motivated by its direct correspondence to the type of information available from the processed side scan sonar 2D map, where detected landmarks can be interpreted in terms of their relative distance and angle with respect to the vessels current position.  
+\\ \\
+The ASV state $\mathbf{x}$ is defined by the INS model presented earlier in Equation \eqref{eq:kinematics-motion-model-states}. From this full state, only the position component $\mathbf{p}_{b/O}^{n}$ and the attitude quaternion $\mathbf{q}$ are required for the landmark observation. The vehicle pose is expressed in the NED frame, while the landmark measurements are expressed relative to the local body frame of the sonar.  
+\\ \\
+Let the map contain a set of landmarks $\mathbf{m} = \{ m^1, m^2, \dots, m^N \}$, where each landmark $m^i = [m_x^i, m_y^i, 0]^\top$ is fixed in the NED frame. Although the ASV state $\mathbf{p}_{b/O}^{n} = [x, y, z]^\top$ is fully 3D, the side scan sonar and corresponding landmark map are inherently 2D, describing features on a locally planar surface. Consequently, only the horizontal components $(x, y)$ of both the vehicle position and the landmark locations are relevant for the range-bearing measurement, while variations in depth ($z$) are neglected.  
+\\ \\
+The measurement function $h(\mathbf{x}, m^i)$ predicts the expected observation of the $i$-th landmark in the local body frame by transforming it from the navigation frame using the full quaternion rotation matrix $R_n^b(\mathbf{q})$. The expected range and bearing observation is expressed as
+\begin{equation}
+    h(\mathbf{x}, m^i) =
+    \begin{bmatrix}
+        \sqrt{(m_b^i{}_x)^2 + (m_b^i{}_y)^2} \\
+        \mathrm{atan2}(m_b^i{}_y,\, m_b^i{}_x)
+    \end{bmatrix},
+    \qquad
+    m_b^i = R_n^b(\mathbf{q}) \left( m^i - \mathbf{p}_{b/O}^{n} \right)
+    \label{eq:range-bearing-model-deterministic}
+\end{equation}
+This transformation converts the landmark position from the NED frame to the sensors local body frame, ensuring that both range and bearing are expressed relative to the vehicles pose and attitude. Although the full quaternion rotation $R_n^b(\mathbf{q})$ is used for generality, only the planar motion components (surge, sway, yaw) contribute to the range-bearing measurement, while roll and pitch variations are small and can be neglected for the microAmpere ASV.  
+\\ \\
+The range-bearing model provides an effective framework for representing side scan sonar landmark measurements, where image features such as rocks, seabed edges, or submerged structures are interpreted as discrete landmarks. Each detection is expressed as $\mathbf{z}^i = [z_r^i, z_\theta^i]^\top$, corresponding to the range and bearing of a landmark relative to the locally generated 2D sonar map.  
+\\ \\
+In practical conditions, the sonar measurement is influenced by several environmental and geometric factors. The intensity and detectability of a landmark strongly depend on the incidence angle between the sonar beam and the surface normal of the object. At near normal incidence, strong reflections occur, while at grazing angles, reflections weaken due to scattering and shadowing effects. In addition, local sound speed variations caused by temperature and salinity gradients introduce refraction, bending the acoustic path and altering the apparent range of the detected feature.
+\\ \\
+To account for both environmental and geometric effects, the deterministic range bearing model in Equation \eqref{eq:range-bearing-model-deterministic} is extended with a systematic correction term and a stochastic noise component.  
+\\ \\
+The measurement model relates the observed landmark measurement $\mathbf{z}^i$ to its predicted observation based on the current vehicle state $\mathbf{x}$ and the landmark position $m^i$. It is expressed as
+\begin{equation}
+    \begin{bmatrix}
+        z_r^i \\
+        z_\theta^i
+    \end{bmatrix} = 
+    \mathbf{z}^i = h_{\text{corr}}(\mathbf{x}, m^i) + \mathbf{n}^i
+    \label{eq:range-bearing-measurement-model}
+\end{equation}
+where $\mathbf{z}^i = [z_r^i, z_\theta^i]^\top$ denotes the measured range and bearing of the $i$-th landmark, and $\mathbf{n}^i$ represents the stochastic measurement noise.  
+\\ \\
+The predicted or expected landmark observation is described by the corrected deterministic measurement model
+\begin{equation}
+    h_{\text{corr}}(\mathbf{x}, m^i) = h(\mathbf{x}, m^i) + \Delta h(\mathbf{x}, m^i, \theta^i)
+    \label{eq:range-bearing-model-extended}
+\end{equation}
+where $h(\mathbf{x}, m^i)$ is the nominal geometric prediction of range and bearing based solely on the vehicle pose and landmark position as defined in Equation \eqref{eq:range-bearing-model-deterministic}. The term $\Delta h(\mathbf{x}, m^i, \theta^i)$ introduces a deterministic correction that compensates for angle dependent reflection and refraction effects, while $\theta^i$ denotes the local incidence angle between the sonar beam and the line of sight to the landmark, ie bearing. The remaining term $\mathbf{n}^i$ models zero mean Gaussian noise with range dependent covariance $\mathbf{R}_{z^i}$, representing the random uncertainty in the measurement. Together, these components define how the actual landmark observation $\mathbf{z}^i$ deviates from the ideal geometric prediction due to both deterministic environmental effects and stochastic sensor noise.
+\\ \\
+The bearing $\theta^i$ is local incidence angle defined as the angle between the sonar beam direction and the line of sight to the landmark in the body frame:
+$$
+    \theta^i = \mathrm{atan2}(m_b^i{}_y,\, m_b^i{}_x),
+    \qquad
+    m_b^i = R_n^b(\mathbf{q}) \left( m^i - \mathbf{p}_{b/O}^{n} \right)
+$$
+where $R_n^b(\mathbf{q})$ transforms the landmark position from the navigation to the body frame. This angle changes with the ASV yaw and influences both reflection strength and measurement bias.  
+\\ \\
+The correction term $\Delta h(\mathbf{x}, m^i, \theta^i)$ models this deterministic bias and is approximated as
+$$
+    \Delta h(\mathbf{x}, m^i, \theta^i) \approx
+    \begin{bmatrix}
+        \kappa_r (1 - \cos{\theta^i}) \\
+        \kappa_\theta \sin{\theta^i}
+    \end{bmatrix}
+$$
+where $\kappa_r$ and $\kappa_\theta$ are empirically tuned parameters that describe how range and bearing measurements vary with incidence angle. The range component reduces for grazing angles due to weaker echoes, while the bearing term introduces a small angular offset caused by asymmetric scattering.  
+\\ \\
+The random noise component is modeled as
+\begin{equation}
+    \mathbf{n}^i \sim \mathcal{N}(\mathbf{0}, \mathbf{R}_{z^i}),
+    \qquad
+    \mathbf{R}_{z^i} =
+    \begin{bmatrix}
+        \sigma_r^2(1 + \alpha_r (r^i)^2) & 0 \\
+        0 & \sigma_\theta^2(1 + \alpha_\theta (r^i)^2)
+    \end{bmatrix}
+    \label{eq:range-bearing-model-extended-noise}
+\end{equation}
+where $r^i = \sqrt{(m_b^i{}_x)^2 + (m_b^i{}_y)^2}$ is the predicted landmark range. The parameters $\sigma_r$ and $\sigma_\theta$ represent the nominal measurement noise at short distance, while $\alpha_r$ and $\alpha_\theta$ model the range dependent growth in uncertainty due to acoustic attenuation, multipath effects, and beam spreading.  
+
+
+
+\subsubsection{Model Comparison and Selection}
+The modeling framework combines two complementary representations, the Fossen kinetic model for high fidelity dynamics and the INS based kinematic model for efficient state propagation. The kinetic model provides a complete physical description including rigid body dynamics, hydrodynamic effects, and restoring forces, making it suitable for control design and dynamic analysis. However, its use requires extensive parameter identification that is impractical for small autonomous vessels, where only a limited subset of hydrodynamic coefficients can be reliably estimated.  
+\\ \\
+The INS based kinematic model offers a simplified alternative focused on direct propagation of position, velocity, and attitude from inertial measurements. It removes the dependency on hydrodynamic parameters, enabling lightweight and robust integration with aiding sensors such as GNSS. The assumption that the IMU is located near the center of gravity minimizes lever arm effects, making this approach sufficiently accurate for navigation, SLAM, and control tasks. For these reasons, the INS formulation is adopted as the primary motion model in this thesis, providing an optimal trade off between model fidelity, computational cost, and implementation simplicity.  
+\\ \\
+Similarly, for landmark sensing, the deterministic range-bearing model is sufficient for basic experiments or low noise environments. In contrast, the extended model accounts for incidence angle and range dependent effects, providing a more realistic representation of sonar measurement behavior under varying environmental and geometric conditions. The choice between models therefore depends on the desired accuracy and computational constraints, with the extended formulation preferred for high fidelity SLAM or sonar mapping applications.
+

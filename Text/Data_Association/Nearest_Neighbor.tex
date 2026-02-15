@@ -1,0 +1,17 @@
+\subsection{Nearest Neighbor}
+Once gating removes all statistically invalid candidates, the remaining step is simply to choose which of the surviving landmarks the measurement should be associated with. The Nearest Neighbor (NN) rule selects the candidate with the smallest Mahalanobis distance $d^{2}$ inside the gate. Formally, for the set of gated landmarks $\mathcal{L}$, NN chooses
+$$
+    j^{*} = \arg\min_{j \in \mathcal{L}} \; d^{2}_{j}
+$$
+where $d^{2}_{j}$ is the Mahalanobis distance between the measurement and the predicted observation of landmark $j$.
+\\ \\
+This makes NN extremely fast and easy to implement, since it only requires evaluating the distance for each surviving landmark and selecting the smallest value. It commits to exactly one landmark, avoiding branching or combinatorial growth.
+\\ \\
+The drawback is that NN is brittle in cluttered environments, because it always picks the single closest candidate even if several lie at similar distances or if a spurious detection happens to be slightly closer. However, underwater seabed landmarks are sparse, well separated, and predominantly static, making NN a good starting algorithm for this thesis.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\linewidth]{Pictures/Data_Association/Nearest_Neighbor/Nearest_Neighbor_Example.png}
+    \caption{Examples of individual nearest-neighbor association. Each landmark (+) has an association region (ellipse), based on the uncertainty in that landmarks location and the noise in the observation model. Each observation (X) is associated to its nearest landmark, if the observation falls in that landmarks association region. If there are multiple observations falling in the same landmarks association region, the nearest is chosen. This strategy may choose incorrect associations if there are many false alarms (top right), if there is large pose uncertainty (bottom left), or if an observation falls in the association region of multiple landmarks (bottom right).\textsuperscript{\cite{nearest_neighbor}}}
+    \label{fig:data-association-nearest-neighbor-example}
+\end{figure}
+

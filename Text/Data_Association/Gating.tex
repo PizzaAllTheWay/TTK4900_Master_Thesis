@@ -1,0 +1,31 @@
+\subsection{Gating}
+Gating is the first filtering step in data association and removes landmark candidates that are statistically incompatible with a new measurement. For a predicted measurement $\hat{z}=h(\hat{x})$ with innovation covariance
+\begin{equation}
+    S = H P H^\top + R
+    \label{eq:data-association-innovation-covariance}
+\end{equation}
+The idea is the same as in the \textit{``State Estimation''} chapter, the comparison between $z$ and $\hat{z}$ must be done in measurement space, so the state covariance $P$ is pushed through the measurement Jacobian $H$ to form the innovation covariance $S$, which describes how uncertainty looks after the nonlinear transformation $h(x)$ (see Equation \eqref{eq:range-bearing-model-deterministic}-\eqref{eq:range-bearing-model-extended-noise}). The sensor noise $R$ is added according to the noise model in \eqref{eq:range-bearing-model-extended-noise}, since the predicted measurement itself carries uncertainty. For the deterministic range bearing model \eqref{eq:range-bearing-model-deterministic} the Jacobian can be derived analytically, but the extended model \eqref{eq:range-bearing-model-extended} makes $H$ too messy to write in closed form, so it is computed numerically by perturbing each state component slightly, recomputing $h(x)$, and using the resulting finite differences to assemble the Jacobian. This gives a clean and robust $H$ even when the measurement model is complex.
+\\ \\
+a sensor reading $z$ is only considered if it falls inside this uncertainty region. The check is done using the Mahalanobis distance
+\begin{equation}
+    d^2 = \lVert z - \hat{z} \rVert_{S}^2 = (z - \hat{z})^\top S^{-1} (z - \hat{z})
+    \label{eq:data-association-mahalanobis-distance}
+\end{equation}
+which measures the innovation in the units of its predicted noise rather than raw Euclidean space.
+\\ \\
+To understand why Mahalanobis distance is used, Figure \ref{fig:data-association-mahalanobis-distance} shows the key intuition. The left plot (Euclidean) treats all directions equally, creating a circular inlier region. The right plot (Mahalanobis) adapts to the covariance, high uncertainty directions are stretched, low uncertainty directions are tight, and correlations tilt the ellipse. This ellipse is exactly the gate used in DA and SLAM problem. A measurement must fall inside this ellipse to be considered a candidate, if it lies outside, it is rejected immediately.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.0\linewidth]{Pictures/Data_Association/Gating/Mahalanobis_Distance.png}
+    \caption{Euclidean vs Mahalanobis residual contours. Euclidean distance yields circular gates. Mahalanobis distance uses the covariance to stretch and tilt the inlier region into an ellipse aligned with the uncertainty.\textsuperscript{\cite{mahalanobis_distance_explained}}}
+    \label{fig:data-association-mahalanobis-distance}
+\end{figure}
+
+\newpage
+
+\noindent
+The Mahalanobis distance $d^{2}$ provides a single scalar test of how well a measurement matches its prediction in the 2D range-bearing space. Because it directly incorporates the geometry of the covariance $S$, it measures the error in ``units of expected noise'' rather than raw Euclidean distance. Gating then becomes a simple rule, a candidate landmark is accepted only if $d^{2}<\gamma$, where $\gamma$ sets the size of the allowed uncertainty ellipse around the predicted measurement. A small $\gamma$ means only very close (statistically strong) matches are accepted, a larger $\gamma$ allows more uncertain ones.
+\\ \\
+Since this thesis assumes Gaussian measurement noise throughout the estimation pipeline, a correct innovation behaves like a normalised 2D Gaussian vector. Squaring each Gaussian component and summing them produces a random variable that follows a $\chi^{2}$ distribution with 2 DOF. This is why the squared Mahalanobis distance naturally links to the $\chi^{2}$ distribution, under the Gaussian assumption, $d^{2}$ directly expresses how likely the innovation is. The threshold is therefore chosen as $\gamma = \chi^{2}_{2}(p)$, where $p$ is the desired confidence level taken from the Gaussian CDF (Cumulative Distribution Function). According to calculations in paper on multinormal distributions and chi squared \cite{chi_squared} choosing $p=0.95$ for 2 DOF yields $\gamma\approx 5.99$, meaning 95\% of all correct 2D innovations should satisfy $d^{2}<5.99$, choosing $p=0.99$ gives $\gamma\approx 9.21$. These values simply correspond to the radius of a 2D Gaussian confidence region expressed in Mahalanobis units. If $d^{2}<\gamma$ the measurement is statistically consistent, and if $d^{2}>\gamma$ it is rejected.
+\\ \\
+This thesis uses 2 separate gating modes depending on the situation. A wide \textit{``global gate''} with a large $\gamma$ is used when loop closure candidates are possible, allowing uncertain but potentially important matches to pass. In ordinary short range operation a much tighter \textit{``local gate''} is used instead, aggressively pruning nearby candidates for computational efficiency. These 2 modes are applied independently depending on context, and the choice of which gate to use is handled later in the data association pipeline.

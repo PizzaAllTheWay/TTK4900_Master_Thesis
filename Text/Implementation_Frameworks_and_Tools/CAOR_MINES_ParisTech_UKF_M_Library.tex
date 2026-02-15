@@ -1,0 +1,10 @@
+\subsection{CAOR-MINES ParisTech UKF-M Library}
+The UKF-M (Unscented Kalman Filter on Manifolds) library, developed by CAOR-MINES ParisTech, provides a practical framework for nonlinear state estimation on manifolds such as $SO(3)$ and $SE(3)$ \cite{ukf_on_lie_groups}\cite{ukf_manifold_code}. It extends the standard UKF \cite{ukf} to handle rotations and translations directly on their respective manifolds, removing the need for Jacobian derivation and linearization.  
+\\ \\
+In this work, UKF-M is used as the main state estimation backend for integrating IMU, GNSS, and SLAM data into a unified navigation solution. Each measurement source is represented by a nonlinear measurement function $h(\mathbf{x})$ with an associated covariance that reflects its uncertainty. The filter propagates the mean and covariance directly on the manifold, maintaining proper handling of rotational and translational geometry. This allows consistent fusion of measurements expressed in different coordinate frames and Manifold formulations.  
+\\ \\
+The implementation used here follows the official open source version maintained by CAOR-MINES ParisTech, available at \url{https://github.com/CAOR-MINES-ParisTech/ukfm} \cite{UKFM_GitHub}. The repository provides a structured implementation of the UKF-M formulation along with reference examples for sensor fusion and motion estimation. The library has been verified in several research projects involving inertial and visual odometry \cite{ukf_on_lie_groups}\cite{ukf_manifold_code}.  
+\\ \\
+The UKF-M library is released under the BSD-3-Clause license. This license permits modification, redistribution, and academic use, as long as copyright and license notices are preserved. It ensures that derived work remains properly attributed to the original developers while allowing open research collaboration and reproducibility.
+
+

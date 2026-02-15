@@ -1,0 +1,9 @@
+\subsection{Introduction}
+This chapter presents the methodology used for generating local side scan sonar maps, which serve as input to the data association stage in the SLAM frontend. The main objective is to transform raw 1D sonar swaths into geometrically and radiometrically corrected 2D intensity maps that represent the local seafloor reflectivity in Cartesian coordinates. These maps provide spatially consistent seafloor representations that can be used for feature extraction and localization in autonomous navigation systems.  
+\\ \\
+The mapping process follows a structured pipeline consisting of three main stages, swath processing, probabilistic map construction, and feature extraction. Swath processing compensates for vehicle motion, corrects for beam geometry, and normalizes sonar intensity. The probabilistic construction stage then fuses consecutive swaths into a coherent 2D local reflectivity map using a beam based uncertainty model that accounts for angular spread and measurement overlap. Finally, distinctive acoustic landmarks are extracted from the map and passed to the SLAM frontend for data association and state estimation.  
+\\ \\
+Local maps are generated incrementally using a sliding window approach, where each new map partially overlaps with the previous one. Typically, 1/3rd of the earlier data is retained while 2/3rds are replaced with new sonar information. This overlap ensures temporal and spatial continuity between consecutive maps, preventing landmark loss and maintaining stable feature tracking.  
+\\ \\
+The methodology presented here is primarily based on and extends previous work by Haralstad \cite{side_scan_sonar_master_thesis} and Hoff \cite{side_scan_sonar_paper}, incorporating several adaptations for real-time implementation on the MicroAmpere ASV platform. These include a refined probabilistic mapping model for uncertainty aware construction and optimized data flow for embedded processing.
+
