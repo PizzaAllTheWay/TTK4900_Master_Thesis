@@ -56,24 +56,24 @@ $$
     S = \sum_{i=0}^{2L} W_i^c \, (\mathcal{Z}_i - \hat{\mathbf{z}})(\mathcal{Z}_i - \hat{\mathbf{z}})^\top + R
 $$
 $$
-    P_{xz} = \sum_{i=0}^{2L} W_i^c \, (\chi_i^- - \hat{\mathbf{x}}^-)(\mathcal{Z}_i - \hat{\mathbf{z}})^\top,
+    P_{xz} = \sum_{i=0}^{2L} W_i^c \, (\chi_i^- - \hat{\mathbf{x}}^-)(\mathcal{Z}_i - \hat{\mathbf{z}})^\top
 $$
 where $R$ is the measurement noise covariance matrix.  
 \\ \\
 The Kalman gain is then computed as
 $$
-    K = P_{xz} S^{-1}.
+    K = P_{xz} S^{-1}
 $$
 The state and covariance are updated according to
 $$
-    \hat{\mathbf{x}} = \hat{\mathbf{x}}^- + K(\mathbf{z} - \hat{\mathbf{z}}),
+    \hat{\mathbf{x}} = \hat{\mathbf{x}}^- + K(\mathbf{z} - \hat{\mathbf{z}})
 $$
 $$
-    P = P^- - K S K^\top.
+    P = P^- - K S K^\top
 $$
 Finally, the quaternion component of the state is normalized to maintain unit length and ensure a valid rotation representation:
 $$
-    \mathbf{q} \leftarrow \frac{\mathbf{q}}{\|\mathbf{q}\|}.
+    \mathbf{q} \leftarrow \frac{\mathbf{q}}{\|\mathbf{q}\|}
 $$
 This completes the classical UKF update stage, where non-linearities are handled through sigma point sampling rather than analytic Jacobian linearization.
 
