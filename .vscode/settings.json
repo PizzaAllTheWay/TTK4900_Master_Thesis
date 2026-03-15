@@ -17,4 +17,20 @@
         "preintegrated",
         "Preintegration"
     ],
+
+    "latex-workshop.latex.tools": [
+    {
+        "name": "buildscript",
+        "command": "./build.sh",
+        "args": []
+    }
+    ],
+    "latex-workshop.latex.recipes": [
+    {
+        "name": "buildscript",
+        "tools": ["buildscript"]
+    }
+    ],
+    "latex-workshop.latex.autoBuild.run": "onSave",
+    "latex-workshop.latex.recipe.default": "buildscript"
 }
