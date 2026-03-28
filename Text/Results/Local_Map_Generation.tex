@@ -37,12 +37,12 @@ The blind zone scale factors control how aggressively the near nadir region is r
 The swath processing stage was evaluated by inspecting the intermediate outputs produced after geometric correction, blind zone removal, and intensity normalization. These results show how the raw sonar measurements are progressively transformed into a cleaner and more consistent swath representation suitable for later map generation.
 \begin{figure}[H]
     \centering
-    \includegraphics[width=1.0\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing_Geometric_correction_zoomed_out.png}
+    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing_Geometric_correction_zoomed_out.png}
     
     \vspace{0.5em}
     
-    \includegraphics[width=1.0\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing_Geometric_correction_zoomed_in.png}
-    \caption{Geometric correction result shown at two spatial scales. The upper image shows the full mission view of the estimated first bottom return boundary, while the lower image shows a zoomed in view of the same result. In both cases, the corrected boundary follows the expected seabed intersection geometry and separates the near nadir water column region from the valid seabed returns.}
+    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing_Geometric_correction_zoomed_in.png}
+    \caption{Geometric correction result shown at two spatial scales. The upper image shows the full mission view of the estimated first bottom return boundary, while the lower image shows a zoomed in view of the same result. In both cases, the corrected boundary follows the expected seabed intersection geometry and separates the near nadir water column region from the valid seabed returns. Note that $h_{\mathrm{dvl}}$, $h_{\mathrm{port}}$, and $h_{\mathrm{stb}}$ are nearly identical, with a maximum difference of only about $0.2\,\mathrm{m}$. As a result, the three height curves largely overlap and visually appear as a single line, even though they represent three separate estimates.}
     \label{fig:results-local-map-generation-swath-processing-geometric-correction}
 \end{figure}
 

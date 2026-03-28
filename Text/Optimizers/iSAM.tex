@@ -372,9 +372,9 @@ $$
     \end{bmatrix}
     \bar J^\top
 $$
-where $\bar J$ is the Jacobian of the local inverse measurement model, $\Sigma_{ii}$ is the current pose covariance, and $\Gamma$ is the measurement noise. This upper bounds landmark uncertainty (never over confident), is fast, and works well for online Mahalanobis gating. As more measurements of a landmark arrive, this bound typically tightens.
+where $\bar J$ is the Jacobian of the local inverse measurement model, $\Sigma_{ii}$ is the current pose covariance, and $\Gamma$ is the measurement noise. This upper bounds landmark uncertainty, is fast, and works well for online Mahalanobis gating. As more measurements of a landmark arrive, this bound typically tightens.
 \\ \\
-An important caveat to mention is that the true $\Gamma$ (measurement noise) is usually unknown. The iSAM recipe is to choose $\Gamma$ conservatively so the algorithms doesn't get overly confident. That keeps things safe but can make the gate too tight, causing the data association to reject more matches than it should. Later, a more reliable way to approximate $\Gamma$ from measurement characteristics is described. It avoids overconfidence and uses cues such as sonar range and resolution and landmark confidence, so the gate is realistic and not risky.
+An important caveat is that the true $\Gamma$ (measurement noise) is usually unknown. The iSAM recipe is to choose $\Gamma$ conservatively so the algorithm does not get overly confident. That keeps things safe but can make the gate too tight, causing data association to reject more matches than it should. Later, a more reliable way to approximate $\Gamma$ from measurement characteristics is described. It avoids overconfidence and uses cues such as sonar range, resolution, and landmark confidence, so the gate is realistic without being risky.
 \\ \\
 \textbf{Exact landmark covariances (on demand)} 
 \\ \noindent
