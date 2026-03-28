@@ -1,12 +1,47 @@
 \subsection{Probabilistic Mapping}
 \subsubsection{Mapping}
-After swath processing, the sonar data is geometrically corrected, radiometrically normalized, and expressed in ground coordinates. The next stage is to reconstruct a consistent local map that spatially represents the acoustic backscatter intensity over the seafloor. This process, referred to as \textit{``probabilistic mapping''}, forms the core link between raw sonar measurements and the spatial representations required for SLAM based navigation and data association.
+After swath processing, the sonar data is geometrically corrected, radiometrically normalized. The next stage is to reconstruct a consistent local map that spatially represents the acoustic backscatter intensity over the seafloor. This process, referred to as \textit{``probabilistic mapping''}, forms the core link between raw sonar measurements and the spatial representations required for SLAM based navigation and data association.
 \\ \\
 In conventional Cartesian mapping, each sonar return is assigned directly to a single grid cell using interpolation techniques such as k-Nearest Neighbor (kNN). While computationally efficient, this approach assumes that each sonar measurement corresponds to an exact reflection point on the seafloor, ignoring the finite width of the acoustic beam, the elliptical footprint, and range dependent uncertainty. As a result, such maps tend to appear artificially sharp yet physically inaccurate, particularly under conditions of noise, sparse coverage, or large angular incidence.
 \\ \\
 The probabilistic mapping framework addresses these limitations by representing each sonar beam as a spatial likelihood field rather than a deterministic ray. Instead of assigning a measurement to a single grid cell, its contribution is distributed among neighboring cells according to a physically motivated probability function derived from beam geometry, angular uncertainty, and measurement noise. This produces a continuous, uncertainty aware reflectivity map that better reflects the true acoustic interaction between the sonar and the seafloor surface.
 \\ \\
 Conceptually, the goal of the mapping stage is to transform sonar measurements into a locally consistent intensity field that preserves both geometric fidelity and radiometric realism. The resulting probabilistic map provides a robust foundation for feature extraction and SLAM, improving landmark repeatability across consecutive local maps and maintaining physical consistency even under dynamic vehicle motion and varying seabed conditions.
+
+
+\todo[inline]{Somehow merge these two into one nified cahpter Slant Range Correction + Projection from Polar to Cartesian, maybe even remae it or something idk...}
+\subsubsection{Slant Range Correction}
+After blind zone removal, the remaining valid backscatter samples still represent distances along the sonar beam, known as \textit{``slant range''}. To correctly project these samples into a map of the seafloor, each measurement must be converted from slant range space to horizontal ground range coordinates. This step geometrically flattens the sonar data, forming the basis for accurate seabed mapping.
+\\ \\
+Although the corrected slant ranges $r_{fbr,stb}$ and $r_{fbr,port}$ obtained from Equation \ref{eq:local-map-generation-first-bottom-return} account for vessel roll and pitch, they still describe distances along the acoustic path, not the horizontal ground distance. To produce a geometrically correct swath, each slant range sample is projected onto the seafloor plane assuming a locally flat seabed, which is a reasonable approximation for short range, high frequency side scan sonars.
+\\ \\
+Considering a right triangle formed by the sonar transducer, the seabed intersection point, and the vertical projection of the transducer onto the seabed, the geometric relation between the slant range $r_s$, sonar altitude $h_t$, and horizontal ground range $r_g$ is given by
+$$
+    r_s^2 = r_g^2 + h_t^2
+$$
+Here, $r_s$ represents the total slant range to a specific backscatter sample along the sonar beam, while $r_{fbr}$ denotes the first bottom return, the shortest valid slant range where the sonar beam first intersects the seabed. All samples with $r_s < r_{fbr}$ correspond to water column echoes and are discarded during blind zone removal, whereas samples with $r_s \ge r_{fbr}$ are considered valid seabed returns and are geometrically projected to ground range using the relation above. This conversion ensures that each valid sonar bin is positioned according to its true horizontal distance on the seafloor.
+\\ \\
+Rearranging for $r_g$ gives the horizontal projection formula:
+$$
+    r_g = \sqrt{r_s^2 - h_t^2}
+$$
+This transformation converts each intensity sample from sonar coordinates to its corresponding position on the seafloor. It effectively \textit{``flattens''} the swath geometry, ensuring that equal pixel distances in the final image correspond to equal ground distances on the seabed.
+\\ \\
+Without this correction, near nadir regions would appear compressed and far range regions stretched, leading to geometric distortion in the mapped imagery. Using the previously estimated per channel transducer heights $h_{t,stb}$ and $h_{t,port}$ from Equation \ref{eq:local-map-generation-transducer-height-corrected}, the transformation is applied separately to the port and starboard channels:
+\begin{equation}
+    r_{g,stb} = \sqrt{r_{s,stb}^2 - h_{t,stb}^2}, \qquad
+    r_{g,port} = \sqrt{r_{s,port}^2 - h_{t,port}^2}
+    \label{eq:local-map-generation-ground-range-projection}
+\end{equation}
+This step converts the 1D slant based scan line into a horizontal projection, enabling accurate along track stacking and Cartesian map generation in later stages.
+\\ \\
+The slant range correction relies on the assumption of a locally flat seafloor. While this assumption introduces small errors over complex terrain, it remains valid for the relatively short and narrow swaths typical of shallow water side scan systems such as MicroAmperes sonar. More advanced approaches, such as bathymetry aided correction or shadow based terrain estimation, can further refine this transformation by accounting for local seabed elevation variations. However, these methods are computationally intensive and typically require high resolution bathymetric data or complex image analysis. As such, they are not suitable for real-time operation on computationally constrained embedded systems or during online SLAM processing. For this work, the flat seabed assumption provides an optimal balance between accuracy and efficiency for onboard sonar mapping.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\linewidth]{Pictures/Local_Map_Generation/Probabilistic_Mapping/slant_geometry.png}
+    \caption{Geometric relation between slant range, transducer altitude, and horizontal ground range. The roll angle $\phi$ influences both the transducer height $h_t$ and the slant range $r_s$, affecting the final ground projection $r_g$.\textsuperscript{\cite{side_scan_sonar_paper}}}
+    \label{fig:local-map-generation-slant-geometry}
+\end{figure}
 
 
 

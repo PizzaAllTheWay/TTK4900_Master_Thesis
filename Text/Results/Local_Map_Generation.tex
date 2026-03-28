@@ -1,0 +1,111 @@
+\subsection{Local Map Generation}
+\subsubsection{Overview}
+\todo[inline]{Will need to modify later when other parts are done}
+This section presents the results obtained from the local map generation stage of the pipeline. The evaluation focuses on the swath processing, the probabilistic map generation stage, and the feature extraction stage. Particular attention is given to how the raw side scan sonar measurements are progressively transformed into cleaner and more consistent data products that are suitable for later SLAM processing.
+\\ \\
+The local map generation stage is evaluated qualitatively through intermediate sonar outputs and quantitatively through its computational performance. The goal is to examine whether the implemented processing chain produces physically reasonable swaths and maps while still remaining lightweight enough for real time deployment on embedded robotic platforms.
+
+\subsubsection{Parameters}
+\todo[inline]{Will need to modify later when other parts are done}
+The main algorithm specific parameters used in the swath processing experiments are summarized in Table \ref{tab:local_map_swath_params}. Only the most relevant tuning parameters are included here, since the remaining configuration mainly describes the physical sonar installation and vehicle specific mounting geometry rather than the core processing method.
+\begin{table}[H]
+    \centering
+    \caption{Swath processing parameters}
+    \label{tab:local_map_swath_params}
+    \begin{tabular}{l l}
+        \hline
+        Parameter & Value \\
+        \hline
+        Illumination EMA period & 200 \\
+        Port blind zone scale factor & 0.45 \\
+        Starboard blind zone scale factor & 0.35 \\
+        \hline
+    \end{tabular}
+\end{table}
+\noindent
+The illumination EMA period controls how slowly the estimated illumination envelope is allowed to vary across each swath during intensity normalization. Larger values produce a smoother illumination estimate and stronger normalization, while smaller values retain more local variation but can lead to a noisier correction.
+\\ \\
+The blind zone scale factors control how aggressively the near nadir region is removed for the port and starboard channels. These values were tuned empirically to obtain a reasonable separation between the water column and the first valid seabed returns in the measured sonar data. The fact that the two channels use different values reflects small practical differences in the real sonar response and installation geometry rather than a change in the underlying algorithm.
+
+
+
+\newpage
+
+
+
+\subsubsection{Swath Processing}
+The swath processing stage was evaluated by inspecting the intermediate outputs produced after geometric correction, blind zone removal, and intensity normalization. These results show how the raw sonar measurements are progressively transformed into a cleaner and more consistent swath representation suitable for later map generation.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.0\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing_Geometric_correction_zoomed_out.png}
+    
+    \vspace{0.5em}
+    
+    \includegraphics[width=1.0\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing_Geometric_correction_zoomed_in.png}
+    \caption{Geometric correction result shown at two spatial scales. The upper image shows the full mission view of the estimated first bottom return boundary, while the lower image shows a zoomed in view of the same result. In both cases, the corrected boundary follows the expected seabed intersection geometry and separates the near nadir water column region from the valid seabed returns.}
+    \label{fig:results-local-map-generation-swath-processing-geometric-correction}
+\end{figure}
+
+\newpage
+
+\noindent
+These figures illustrate the geometric correction stage used before blind zone removal. The estimated transducer height and beam geometry provide a physically motivated first return boundary for each channel, which is then used to identify the portion of the swath that can correspond to valid seabed returns.
+\\ \\
+In practice, the blind zone boundary required an additional empirical scaling factor to match the observed sonar data well. Ideally, the purely geometric model should have been sufficient on its own, but without this correction the predicted boundary removed too much of the valid seabed region. A similar need for practical blind zone correction was also observed in Haraldstads earlier master thesis \cite{side_scan_sonar_master_thesis}, although the underlying cause was not fully resolved there either.  
+\\ \\
+The main observation in the present results is that this mismatch appears to be close to constant over time, which is why a fixed scaling factor works reasonably well in practice. At the same time, the zoomed in result shows that the error is not perfectly constant. In some parts of the swath the blind zone is removed almost exactly as desired, while in other parts slightly too much valid seabed is removed. This indicates that the remaining mismatch is not purely geometric, but instead contains an additional varying component. The most likely explanation is that the first physically possible seabed return predicted by the geometric model does not perfectly coincide with the first strong measured backscatter in the real sonar image. This varying error may stem from unmodeled timing effects, uncertainties in the effective beam geometry, mounting inaccuracies, sonar specific signal formation, or differences between the instant of transmission, the instant of reception, and the time associated with the external aiding data. It is therefore reasonable that the required correction differs slightly between the port and starboard channels.
+
+\newpage
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing_Raw.png}
+    
+    \vspace{0.5em}
+    
+    \includegraphics[width=0.8\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing_Blind_Zone_Removed.png}
+    
+    \vspace{0.5em}
+    
+    \includegraphics[width=0.8\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing_Intensity_Normalized.png}
+    \caption{Swath processing result shown at three stages of the pipeline zoomed in on a specific period in time. The top image shows the raw swath data before processing. The middle image shows the same swaths after blind zone removal, where the near nadir water column region has been masked out. The bottom image shows the final result after intensity normalization using the EMA based illumination estimate, where the large scale brightness variation is reduced and the relative seabed texture becomes clearer.}
+    \label{fig:results-local-map-generation-swath-processing-pipeline}
+\end{figure}
+
+\newpage
+
+\noindent
+These figures show the main stages of the swath processing pipeline. The top image shows the raw swath received directly from the sonar. The middle image shows the result after blind zone removal using the corrected first return boundary together with the empirically tuned blind zone scaling discussed above. The bottom image shows the final output after intensity normalization, where the slowly varying illumination trend across the swath has been reduced.
+\\ \\
+The effect of the normalization is clearly visible, as the large scale range dependent brightness variation is reduced and the relative seabed structure becomes easier to interpret. At the same time, the background illumination is not perfectly uniform across all swaths. This is expected, since the EMA based method used here is only a lightweight approximation of the true illumination field rather than a full global estimate. Nevertheless, the result is sufficiently stable and visually consistent for real time swath processing and provides a practical compromise between quality and computational cost.
+
+\newpage
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.0\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing_Performance.png}
+    \caption{Runtime, CPU usage, and memory consumption of the swath processor during operation.}
+    \label{fig:results-local-map-generation-swath-processing-performance}
+\end{figure}
+\noindent
+The computational performance of the swath processing stage was evaluated by measuring runtime, CPU usage, and memory consumption during execution. The runtime remains low enough for real time operation, which was one of the primary motivations for replacing the earlier spline based normalization approach with the present EMA based method.
+\\ \\
+Compared with a more computationally expensive smoothing based illumination estimate, the EMA based normalization significantly reduces the processing cost while still producing a sufficiently good illumination correction for the present task. CPU usage remains modest, and most of the observed memory footprint is dominated by the ROS2 execution environment rather than by the swath processing algorithm itself. These results indicate that the implemented swath processor is computationally lightweight and suitable for integration into the complete SLAM pipeline.
+
+
+
+\newpage
+
+
+
+\subsubsection{Probabalistic Map Generation}
+\todo[inline]{Will need to modify later when other parts are done}
+
+
+
+\newpage
+
+
+
+\subsubsection{Feature Extarction}
+\todo[inline]{Will need to modify later when other parts are done}

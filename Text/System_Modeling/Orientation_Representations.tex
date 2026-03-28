@@ -263,14 +263,15 @@ $$
     \end{bmatrix}
 $$
 \textbf{Quaternion to $\mathrm{SO}(3)$}
-$$
+\begin{equation}
     R_{from}^{to} = R_{b}^{n} =
     \begin{bmatrix}
         1 - 2(q_y^2 + q_z^2) & 2(q_x q_y - q_z q_w) & 2(q_x q_z + q_y q_w) \\
         2(q_x q_y + q_z q_w) & 1 - 2(q_x^2 + q_z^2) & 2(q_y q_z - q_x q_w) \\
         2(q_x q_z - q_y q_w) & 2(q_y q_z + q_x q_w) & 1 - 2(q_x^2 + q_y^2)
     \end{bmatrix}
-$$
+    \label{eq:system-modeling-quaternion-to-so3}
+\end{equation}
 \\ \\
 \noindent
 These relationships provide a convenient reference for converting between orientation representations depending on the application, whether for computation, visualization, or integration with sensor data.

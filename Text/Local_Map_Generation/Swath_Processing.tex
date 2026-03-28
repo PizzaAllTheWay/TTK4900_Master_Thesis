@@ -2,11 +2,11 @@
 \subsubsection{Raw Data and Waterfall Image Formation}
 Side scan sonar data acquisition begins with the transmission of acoustic pulses and the recording of their backscattered echoes along each sonar beam. Each transmitted ping produces a 1D return signal that represents the intensity of acoustic reflections as a function of slant range. This signal corresponds to the strength of the backscattered energy received from the seafloor at varying distances from the transducer.  
 \\ \\
-As the vessel advances, consecutive pings are recorded sequentially and combined to form a 2Dl intensity representation known as a \textit{``waterfall image''} or raw swath. In this format, the horizontal axis corresponds to the ping index or along track distance, while the vertical axis represents the across track slant range. The pixel intensity encodes the relative strength of the seabed backscatter, providing an initial qualitative visualization of seafloor texture and reflectivity.  
+As the vehicle moves forward, consecutive pings are recorded sequentially and combined to form a 2D intensity representation known as a \textit{``waterfall image''} or raw swath. In this format, the horizontal axis corresponds to the ping index or along track progression, while the vertical axis represents the across track slant range. The pixel intensity encodes the relative strength of the measured backscatter, providing an initial qualitative visualization of seafloor texture and reflectivity.  
 \\ \\
-This raw waterfall image forms the foundational representation of side scan sonar data. However, it remains expressed in slant range space rather than true horizontal ground coordinates, introducing geometric distortions, particularly near the nadir region where the sonar beam intersects the seafloor at steep angles. Consequently, the apparent scale and spatial arrangement of features vary with range, and the image cannot yet be interpreted as a direct top down map of the seafloor.  
+This raw waterfall image forms the foundational representation of the side scan sonar data. However, it still remains in the sonars native measurement space, where each sample is indexed by slant range rather than by a geometrically corrected seabed location. As a result, the raw image is not yet directly suitable for consistent mapping or feature extraction, since vehicle attitude, transducer geometry, and acquisition conditions still affect the apparent structure of the swath.  
 \\ \\
-The subsequent stages of swath processing correct for these geometric and radiometric effects to recover an accurate, physically consistent representation of seabed reflectivity. These stages include attitude compensation for pitch and roll, blind zone removal, slant range correction, and intensity normalization. Together, they transform the raw sonar measurements into a geometrically corrected and radiometrically balanced swath suitable for Cartesian projection and feature extraction in later mapping and SLAM stages.
+The subsequent stages of swath processing therefore aim to improve the physical consistency of each ping before later mapping stages. In this work, the swath processing stage focuses on geometric correction using the estimated vehicle pose and altitude, blind zone removal, and intensity normalization. Together, these steps produce a cleaner and more consistent swath representation that is suitable for later local map generation and feature extraction.
 \begin{figure}[H]
     \centering
     \includegraphics[width=1.0\linewidth]{Pictures/Local_Map_Generation/Swath_Processing/raw_waterfall_image.png}
@@ -16,187 +16,190 @@ The subsequent stages of swath processing correct for these geometric and radiom
 
 
 
-\subsubsection{Pitch and Roll Correction}
-Variations in vessel attitude introduce geometric distortions in side scan sonar data. When the vessel experiences pitch or roll motion, the sonar beams deviate from their nominal orientation, causing the seafloor to appear tilted, curved, or stretched in the recorded swath. Without compensation, these effects lead to errors in the perceived seabed slope and displacement of features when the data is projected into Cartesian coordinates.
+\subsubsection{Interpolation}
+In principle, the vehicle pose and altitude used for swath processing should correspond to the exact ping timestamp. If the navigation solution and altitude measurements are sampled at different times than the sonar ping, interpolation can be used to estimate these quantities at the sonar acquisition instant. This improves temporal alignment between the sonar data and the vehicles estimated motion, which can reduce geometric inconsistencies during later correction stages. In particular, interpolation becomes more relevant for faster vehicle motion, stronger maneuvers, or larger differences between sonar and navigation update rates.
+
+\newpage
+
+\noindent
+Let $t_s$ denote the sonar ping timestamp, and let $t_k \leq t_s \leq t_{k+1}$ be two surrounding navigation or altitude measurement times. A linearly interpolated scalar quantity $x(t_s)$ can then be written as
+$$
+    x(t_s) = (1-\lambda)\,x(t_k) + \lambda\,x(t_{k+1})
+$$
+where
+$$
+    \lambda = \frac{t_s - t_k}{t_{k+1} - t_k}
+$$
+For orientation, the same idea applies, although in practice quaternion interpolation such as SLERP is often preferred to preserve valid rotational geometry.  
 \\ \\
-Pitch primarily influences the along track geometry by changing the effective depression angle of the sonar beam in the vertical plane. A positive pitch tilts the sonar forward, causing features to appear shifted ahead of their true positions. Roll, on the other hand, tilts the transducer laterally, altering the ground projection between the port and starboard channels. This asymmetry results in apparent lateral displacement or scaling differences of identical seabed features.
+For slowly moving and gently maneuvering AUVs, interpolation may be treated as an optional refinement when supporting sensor streams such as the DVL or state estimator are updated much faster than the swath data, since in such cases the practical benefit can be small and the available computation may be better used elsewhere. However, the usefulness of this step depends on the vehicle and sensor infrastructure. For faster maneuvering platforms, less synchronized sensor streams, or systems where the swath data arrive at rates comparable to the supporting navigation data, interpolation becomes a more relevant choice and can improve the temporal alignment of the processed swaths.
+
+
+
+\subsubsection{Pitch and Roll Correction}
+Variations in vehicle attitude introduce geometric distortions in side scan sonar data. When the vehicle experiences pitch or roll motion, the sonar transducers no longer maintain their nominal orientation relative to the seabed, and the effective beam direction changes from ping to ping. This changes both the true transducer height above the seabed and the location at which the lower edge of the beam can first intersect the bottom. As a result, the boundary between the water column and the first valid seabed return shifts with vehicle attitude and must be updated for each ping.
+\\ \\
+In the present formulation, pitch and roll correction is treated as a geometric compensation problem based on the estimated vehicle pose, an altitude measurement, and the known mounting offset of each transducer. Rather than estimating the correction directly from the sonar image alone, the method first computes the true height of each transducer above the seabed and then uses the beam geometry to estimate the first physically valid slant range for the port and starboard channels separately. This gives a compact and implementation friendly formulation that matches the real time processing pipeline used in this work.
+\\ \\
+The geometric intuition is consistent with Figures \ref{fig:local-map-generation-pitch-correction} and \ref{fig:local-map-generation-roll-correction}. Those figures illustrate how pitch rotates the beam in the vertical along track plane and how roll creates an asymmetry between port and starboard. In the implementation, the same effect is handled through rigid body rotations, the transducer mounting offset is rotated by the current vehicle attitude to obtain the corrected transducer height, and the mounted beam direction is rotated in the same way to recover the first valid seabed intersection direction.
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.75\linewidth]{Pictures/Local_Map_Generation/Swath_Processing/non_zero_pitch.png}
-    \caption{Starboard transducer and vessel geometry with non zero pitch. The figure shows how a positive pitch angle $\theta$ tilts the sonar beam forward relative to the horizontal plane, altering the beam incidence angle $\alpha_h$ and changing the apparent intersection point $p_s$ on the seafloor. $h_t$ denotes the vertical transducer height, while $h$ is the true vertical altitude of the vessels reference frame.\textsuperscript{\cite{side_scan_sonar_master_thesis}}}
+    \caption{Illustration of pitch induced beam rotation. A positive pitch angle $\theta$ changes the effective beam direction and therefore shifts the apparent seabed intersection geometry. The figure is used here as geometric intuition for the rigid body correction model.\textsuperscript{\cite{side_scan_sonar_master_thesis}}}
     \label{fig:local-map-generation-pitch-correction}
 \end{figure}
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.75\linewidth]{Pictures/Local_Map_Generation/Swath_Processing/non_zero_roll.png}
-    \caption{Starboard transducer and vessel geometry with non zero roll. The roll angle $\phi$ tilts the transducer laterally, changing the apparent ground range $r_g$ and slant range $r_{fbr}$ for each channel. The mounting angle $\beta$ and the sonars vertical beamwidth $\alpha_v$ define the nominal beam orientation. A positive roll reduces the effective depression angle on the port side and increases it on the starboard side, causing geometric asymmetry between the channels.\textsuperscript{\cite{side_scan_sonar_master_thesis}}}
+    \caption{Illustration of roll induced port starboard asymmetry. A nonzero roll angle $\phi$ changes the effective beam orientation differently for the two channels, which leads to different corrected transducer heights and first valid return ranges.\textsuperscript{\cite{side_scan_sonar_master_thesis}}}
     \label{fig:local-map-generation-roll-correction}
 \end{figure}
 \noindent
-To correct these distortions, each ping is compensated using the vessels estimated orientation obtained from the navigation state estimator fusing GNSS and IMU data. The estimated roll $\phi$ and pitch $\theta$ angles define the instantaneous orientation of the sonar beams relative to the horizontal plane and are used to transform the sonar measurements back into a consistent reference frame.
-
-\paragraph{Explicit geometric correction} \mbox{}\\[0.5em] \noindent
-The explicit geometric correction method estimates the true vertical altitude of each sonar transducer relative to the seabed using the first bottom return (FBR) in every ping. The FBR represents the first strong acoustic reflection received from the seafloor. Given the two way travel time $t_{fbr}$ to this reflection and the sound speed $c$ in water, the corresponding slant range is
+Let the vehicle pose at the sonar ping time be obtained from the state estimate in Equation \ref{eq:kinematics-motion-model-states}, where the quaternion is converted to a rotation matrix using Equation \ref{eq:system-modeling-quaternion-to-so3}. The pose input to the swath processing stage can then be written as $\mathbf{R}_{b}^{n}$. Where $\mathbf{R}_{b}^{n}$ is the rotation from body frame to navigation frame. 
+\\ \\
+Let the mounting offset of one sonar transducer, expressed in the body frame, be
+$$
+    \mathbf{p}_{t/b}^b =
+    \begin{bmatrix}
+        x_t \\ y_t \\ z_t
+    \end{bmatrix}
+$$
+To account for vehicle pitch and roll, this fixed body frame offset is rotated into the navigation frame as
+$$
+    \mathbf{p}_{t/b}^n = \mathbf{R}_{b}^{n} \mathbf{p}_{t/b}^b
+$$
+The corrected transducer position relative to the seabed can then be written in full 3D form as
 \begin{equation}
-    r_{fbr} = \frac{c \, t_{fbr}}{2}
-    \label{eq:local-map-generation-fbr}
+    \begin{bmatrix}
+        x \\ y \\ h_t
+    \end{bmatrix}
+    =
+    \begin{bmatrix}
+        0 \\ 0 \\ h_{\mathrm{DVL}}
+    \end{bmatrix}
+    -
+    \mathbf{p}_{t/b}^n
+    \label{eq:local-map-generation-transducer-height-corrected}
 \end{equation}
-which is the distance along the acoustic beam between the transducer and the point of reflection on the seafloor. This distance forms the hypotenuse of a right triangle, where the vertical component corresponds to the true transducer altitude above the seabed.
+where $h_{\mathrm{DVL}}$ is the altitude measurement referenced to the vehicle body origin. Although Equation \ref{eq:local-map-generation-transducer-height-corrected} is written in full 3D form, only the vertical component $h_t$ is needed in the present swath processing stage, since the goal here is to determine the corrected transducer height above the seabed. This equation is evaluated independently for the port and starboard transducers to obtain $h_{t,\mathrm{port}}$ and $h_{t,\mathrm{stb}}$, which are then used in the following step to compute the first physically valid slant range for each channel.
 \\ \\
-The vertical transducer height is obtained by projecting this slant range onto the vertical axis using the effective beam depression angle $\alpha$:
+Once the corrected transducer height $h_t$ has been obtained from Equation \ref{eq:local-map-generation-transducer-height-corrected}, the next step is to estimate the first physically valid slant range along the sonar beam. This corresponds to the first point where the lower edge of the beam can intersect the seabed. The beam center direction of the transducer, expressed in the transducer frame, is defined as
 $$
-    h_t = r_{fbr} \sin(\alpha)
+    \mathbf{b}_{c/t}^t =
+    \begin{bmatrix}
+        0 \\ 1 \\ 0
+    \end{bmatrix}
 $$
-The total depression angle $\alpha$ depends on the fixed sonar mounting angle $\beta$ and the instantaneous pitch $\theta$ and roll $\phi$ of the vessel:
+which reflects that the side scan transducer points laterally in its own local frame. Since the first valid seabed return occurs at the lower edge of the vertical beam rather than at the beam center, this direction is rotated by half of the vertical beamwidth $\alpha$:
 $$
-    \alpha = \beta + \phi + \theta
+    \mathbf{b}_{\ell/t}^t = \mathbf{R}_x\!\left(\frac{\alpha}{2}\right) \mathbf{b}_{c/t}^t
 $$
-Since the vessel rolls about its longitudinal axis, the starboard and port transducers experience opposite roll directions relative to the horizontal plane. A positive roll angle $\phi$ tilts the starboard side downward (toward the seafloor) while lifting the port side upward (away from the seafloor). Therefore, the effective roll correction must be applied with opposite signs for each channel. Substituting these relationships yields:
+where $\mathbf{R}_x\!\left(\frac{\alpha}{2}\right)$ is the rotation from the beam centerline to the lower beam edge. 
+\\ \\
+To express this lower edge beam direction in the navigation frame, the vehicle attitude and the fixed transducer mounting orientation are combined. Let $\mathbf{R}_{t}^{b}$ denote the fixed rotation from transducer frame to body frame, obtained from the known transducer mounting orientation. The corresponding lower edge beam direction in the navigation frame is then
+$$
+    \mathbf{b}_{\ell/t}^n = \mathbf{R}_{b}^{n}\mathbf{R}_{t}^{b}\mathbf{b}_{\ell/t}^t
+$$
+This vector describes the actual lower edge beam direction after both vehicle attitude and transducer mounting have been applied. Its vertical component determines how much downward motion is achieved per unit slant range. Defining the downward fraction as
+$$
+    d = \left| 
+    \begin{bmatrix}
+        0 & 0 & 1
+    \end{bmatrix}
+    \mathbf{b}_{\ell/t}^n
+    \right|
+    \label{eq:local-map-generation-down-component}
+$$
+the first physically valid slant range is obtained directly from the right triangle relation between vertical drop and beam length
 \begin{equation}
-    h_{t,stb} = \frac{c \, t_{fbr,stb}}{2} \sin(\beta + \phi + \theta) , \qquad
-    h_{t,port} = \frac{c \, t_{fbr,port}}{2} \sin(\beta - \phi + \theta)
-    \label{eq:local-map-generation-height-estimate}
+    r_{fbr} = \frac{h_t}{d}
+    \label{eq:local-map-generation-first-bottom-return}
 \end{equation}
-These heights represent the true vertical distance from each transducer to the seabed, accounting for both pitch and roll effects. Even for small roll angles, the difference between $h_{t,stb}$ and $h_{t,port}$ can be significant, especially in shallow water where small angular deviations cause noticeable geometric shifts.
-\\ \\
-Once the individual transducer heights are known, the corrected slant ranges to the first bottom return can be calculated as:
-\begin{equation}
-    r_{fbr,stb} = \frac{h_{t,stb}}{\sin(\beta + \phi + \frac{\alpha_v}{2})}, \qquad
-    r_{fbr,port} = \frac{h_{t,port}}{\sin(\beta - \phi + \frac{\alpha_v}{2})}
-    \label{eq:local-map-generation-slant-range-corrected}
-\end{equation}
-where $\alpha_v$ is the sonars vertical beamwidth. These relations account for roll induced asymmetry between the two channels, ensuring that each beam is projected correctly onto the seafloor. The resulting values are later used to identify the blind zone boundary and valid seafloor return bins.
-\\ \\
-Although the system used in this work does not include a Doppler Velocity Log (DVL) or altimeter, the transducer altitudes $h_{t,stb}$ and $h_{t,port}$ can still be estimated directly from the side scan sonar data using the FBR. The absence of external altitude sensors introduces additional uncertainty in these estimates, as the FBR detection depends on seabed reflectivity and acoustic noise. Nevertheless, the method provides sufficiently accurate geometric correction for surface vessels like MicroAmpere when combined with reliable pitch and roll estimates from the navigation state estimator.
-\\ \\
-By compensating each ping using the measured attitude angles and the estimated per channel transducer altitudes, the side scan sonar data are geometrically corrected for vessel motion, establishing a consistent base for blind zone removal and slant range correction.
+where $h_t$ is the corrected transducer height from Equation \ref{eq:local-map-generation-transducer-height-corrected}. In simple terms, Equation \ref{eq:local-map-generation-first-bottom-return} states that the first valid return range is the slant distance required for the lower edge of the beam to drop vertically by exactly the corrected transducer height. This equation is evaluated independently for the port and starboard channels using their respective mounting orientations and corrected transducer heights, giving $r_{fbr,\mathrm{port}}$ and $r_{fbr,\mathrm{stb}}$. These values are then used in the following blind zone removal step to determine which sonar bins can physically correspond to valid seabed returns.
 
 
 
 \subsubsection{Blind Zone Removal}
-After compensating for pitch and roll, the next processing stage identifies and removes the sonar blind zone. The blind zone corresponds to the near nadir region directly beneath the vessel where the sonar beam does not produce valid seabed returns. In this region, the acoustic pulse travels only through the water column before striking the seafloor, resulting in weak or noisy backscatter dominated by multipath reflections and surface interference.
-\\ \\
-The blind zone starts at the transducer position and extends to the first bottom return (FBR) for each ping. From the two-way travel time $t_{fbr}$, the raw slant range to the first seabed echo is given by Equation \ref{eq:local-map-generation-fbr}. However, this distance alone does not specify the true seabed intersection point, since vessel pitch and roll modify the effective beam depression angle. To correct for this, the per-channel transducer altitudes $h_{t,stb}$ and $h_{t,port}$ are estimated using Equation \ref{eq:local-map-generation-height-estimate}, which projects the measured slant range onto the vertical axis according to the current attitude.
-\\ \\
-Using these altitudes, the corrected slant ranges to the first valid seabed returns are computed from Equation \ref{eq:local-map-generation-slant-range-corrected}. The resulting values, $r_{fbr,stb}$ and $r_{fbr,port}$, represent the roll compensated limits beyond which the acoustic signal first reaches the seafloor. Each sonar beam contains a set of slant range samples denoted by $r_s$, and the first valid bottom return is located at $r_{fbr}$. When $r_s < r_{fbr}$, the signal originates from the water column and is discarded. When $r_s \ge r_{fbr}$, the return corresponds to the seafloor and is retained for mapping. This separation ensures that only physically meaningful data are passed to later correction stages.
-\\ \\
-In the raw waterfall image, the blind zone appears as a dark vertical band between the port and starboard channels. Its width scales with sonar altitude, higher transducer placement (larger $h_t$) produces a wider blind zone, while shallow operation results in a narrower central gap. The horizontal width can be derived geometrically from the sonar altitude and beam depression angle.
-\\ \\
-Consider one side of the sonar where the transducer height above the seabed is $h_t$ and the beam depression angle relative to the horizontal plane is $\beta$. The horizontal distance from the nadir (the point directly below the sonar) to the seabed intersection is denoted $x_b$. From the right triangle formed by the sonar, nadir, and seabed intersection,
-$$
-    \tan(\beta) = \frac{h_t}{x_b}
-$$
-Solving for $x_b$ gives
-$$
-    x_b = \frac{h_t}{\tan(\beta)}
-$$
-Since the blind zone covers both sides of the nadir, the total horizontal width becomes
-$$
-    w_b = 2x_b = 2 \frac{h_t}{\tan(\beta)} = 2 h_t \cot(\beta)
-$$
-where $h_t$ represents the mean of $h_{t,stb}$ and $h_{t,port}$, and $\beta$ is the fixed mounting depression angle. This simple geometric relation shows that increasing sonar altitude or reducing beam angle widens the blind zone proportionally.
-\\ \\
-Accurate detection and removal of the blind zone are essential for maintaining data quality. Unfiltered water column samples can introduce false intensities and distortions in later steps such as slant range correction and intensity normalization. After blind zone removal, each ping contains only valid seabed returns, providing a clean and geometrically consistent input for subsequent processing.
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.95\linewidth]{Pictures/Local_Map_Generation/Swath_Processing/blind_zone_example.png}
+    \includegraphics[width=0.80\linewidth]{Pictures/Local_Map_Generation/Swath_Processing/blind_zone_example.png}
     \caption{Transverse view of a side scan sonar geometry showing the blind zone at nadir. The blind zone is the near-vertical region beneath the sonar where no valid seabed echoes are received, separating the port and starboard swaths.\textsuperscript{\cite{blind_zone_example}}}
     \label{fig:local-map-generation-blind-zone-example}
 \end{figure}
-
-
-
-\subsubsection{Slant Range Correction}
-After blind zone removal, the remaining valid backscatter samples still represent distances along the sonar beam, known as \textit{``slant range''}. To correctly project these samples into a map of the seafloor, each measurement must be converted from slant range space to horizontal ground range coordinates. This step geometrically flattens the sonar data, forming the basis for accurate seabed mapping.
+\noindent
+After the geometric correction step, the corrected first valid slant ranges $r_{fbr,\mathrm{port}}$ and $r_{fbr,\mathrm{stb}}$ are available for the two sonar channels. These values define the earliest slant ranges at which the lower edge of the beam can physically intersect the seabed. All samples located closer to the transducer than this limit must therefore belong to the water column or other non seabed returns, and are removed before further processing.
 \\ \\
-Although the corrected slant ranges $r_{fbr,stb}$ and $r_{fbr,port}$ obtained from Equation \ref{eq:local-map-generation-slant-range-corrected} account for vessel roll and pitch, they still describe distances along the acoustic path, not the horizontal ground distance. To produce a geometrically correct swath, each slant range sample is projected onto the seafloor plane assuming a locally flat seabed, which is a reasonable approximation for short range, high frequency side scan sonars.
-\\ \\
-Considering a right triangle formed by the sonar transducer, the seabed intersection point, and the vertical projection of the transducer onto the seabed, the geometric relation between the slant range $r_s$, sonar altitude $h_t$, and horizontal ground range $r_g$ is given by
+Let the raw swath contain $N_s$ samples per beam and let the maximum recorded slant range be $r_{\max}$. The slant range resolution of one sample bin is then
 $$
-    r_s^2 = r_g^2 + h_t^2
+    \Delta r = \frac{r_{\max}}{N_s}
 $$
-Here, $r_s$ represents the total slant range to a specific backscatter sample along the sonar beam, while $r_{fbr}$ denotes the first bottom return, the shortest valid slant range where the sonar beam first intersects the seabed. All samples with $r_s < r_{fbr}$ correspond to water column echoes and are discarded during blind zone removal, whereas samples with $r_s \ge r_{fbr}$ are considered valid seabed returns and are geometrically projected to ground range using the relation above. This conversion ensures that each valid sonar bin is positioned according to its true horizontal distance on the seafloor.
-\\ \\
-Rearranging for $r_g$ gives the horizontal projection formula:
-$$
-    r_g = \sqrt{r_s^2 - h_t^2}
-$$
-This transformation converts each intensity sample from sonar coordinates to its corresponding position on the seafloor. It effectively \textit{``flattens''} the swath geometry, ensuring that equal pixel distances in the final image correspond to equal ground distances on the seabed.
-\\ \\
-Without this correction, near nadir regions would appear compressed and far range regions stretched, leading to geometric distortion in the mapped imagery. Using the previously estimated per channel transducer heights $h_{t,stb}$ and $h_{t,port}$ from Equation \ref{eq:local-map-generation-height-estimate}, the transformation is applied separately to the port and starboard channels:
+Using this resolution, the corrected first valid slant range can be converted from meters into a discrete sample index. For one channel, the corresponding first valid bin is written as
 \begin{equation}
-    r_{g,stb} = \sqrt{r_{s,stb}^2 - h_{t,stb}^2}, \qquad
-    r_{g,port} = \sqrt{r_{s,port}^2 - h_{t,port}^2}
-    \label{eq:local-map-generation-ground-range-projection}
+    k_{fbr} = \left\lfloor \frac{r_{fbr}}{\Delta r} \right\rfloor
+    \label{eq:local-map-generation-first-bottom-return-bin}
 \end{equation}
-This step converts the 1D slant based scan line into a horizontal projection, enabling accurate along track stacking and Cartesian map generation in later stages.
+where $r_{fbr}$ is obtained from Equation \ref{eq:local-map-generation-first-bottom-return}. In practice, this index is evaluated independently for the port and starboard channels, giving $k_{fbr,\mathrm{port}}$ and $k_{fbr,\mathrm{stb}}$.
 \\ \\
-The slant range correction relies on the assumption of a locally flat seafloor. While this assumption introduces small errors over complex terrain, it remains valid for the relatively short and narrow swaths typical of shallow water side scan systems such as MicroAmperes sonar. More advanced approaches, such as bathymetry aided correction or shadow based terrain estimation, can further refine this transformation by accounting for local seabed elevation variations. However, these methods are computationally intensive and typically require high resolution bathymetric data or complex image analysis. As such, they are not suitable for real-time operation on computationally constrained embedded systems or during online SLAM processing. For this work, the flat seabed assumption provides an optimal balance between accuracy and efficiency for onboard sonar mapping.
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.7\linewidth]{Pictures/Local_Map_Generation/Swath_Processing/slant_geometry.png}
-    \caption{Geometric relation between slant range, transducer altitude, and horizontal ground range. The roll angle $\phi$ influences both the transducer height $h_t$ and the slant range $r_s$, affecting the final ground projection $r_g$.\textsuperscript{\cite{side_scan_sonar_paper}}}
-    \label{fig:local-map-generation-slant-geometry}
-\end{figure}
+The blind zone removal step then masks all bins that lie between the transducer and the first valid bin. Let $I(i)$ denote the raw intensity of one channel at sample index $i$, and let $\tilde{I}(i)$ denote the masked result. In simple terms, all samples before the first valid seabed return are removed, which can be written as
+\begin{equation}
+    \tilde{I}(i) =
+    \begin{cases}
+        0, & i < k_{fbr}, \\
+        I(i), & i \geq k_{fbr}.
+    \end{cases}
+    \label{eq:local-map-generation-blind-zone-mask}
+\end{equation}
+In practice, the implementation applies this masking according to the native storage order of each channel, but the underlying idea remains the same, all bins before the first physically valid seabed return are discarded.
+\\ \\
+This preserves the original storage order of the channel while removing the near range water column region correctly. In simple terms, the geometric correction step provides the first physically valid return range, Equation \ref{eq:local-map-generation-first-bottom-return-bin} converts that range into a sonar bin index, and Equation \ref{eq:local-map-generation-blind-zone-mask} removes all bins that cannot yet correspond to seabed returns, leaving a cleaner input for the subsequent intensity normalization stage.
 
 
 
 \subsubsection{Intensity Normalization}
-The received sonar intensity naturally decays with range due to spherical spreading, absorption, and other propagation losses. These effects introduce unwanted attenuation in the measured signal, causing distant regions of the seabed to appear artificially darker. To counteract this, intensity normalization is applied to compensate for range dependent loss and ensure that the resulting image reflects true seabed backscatter rather than acoustic propagation effects.
+The received sonar intensity naturally decays with range due to spherical spreading, absorption, beam pattern effects, and other propagation losses. As a result, distant parts of the seabed can appear artificially darker even when their true reflectivity is similar. Intensity normalization is therefore applied to suppress these large scale acoustic effects so that the processed swath better reflects the relative backscatter structure of the seabed.
 \\ \\
-Before normalization, the sonar signal has already undergone pitch and roll correction, blind zone removal, and slant range correction. The processed data now represent the measured acoustic backscatter intensity as a function of ground range for each ping. Each intensity sample is denoted as
-$$
-    I(i) = I(r_g(i))
-$$
-where $r_g(i)$ is the horizontal ground range obtained from the geometric projection (see Equation \ref{eq:local-map-generation-ground-range-projection}). Here, $r_g(i)$ defines the physical position of the $i$-th corresponding seafloor point, while $I(r_g(i))$ represents the measured acoustic intensity received from that $i$-th point.  
+At this stage, the sonar data have already undergone pitch and roll correction as well as blind zone removal. The remaining signal can therefore be treated as the valid measured backscatter intensity of one swath, where each sample is denoted by $I(i)$. Although these samples now correspond to physically valid seabed returns, they still contain both the true seabed reflectivity and the slowly varying illumination trend introduced by the sonar system and acoustic propagation.
 \\ \\
-For simplicity, the notation $I(i)$ is used throughout the following sections to refer to the measured backscatter intensity associated with sample $i$, understood as the intensity evaluated at its ground projected location $r_g(i)$. This measured intensity still contains both the true seabed reflectivity and the effects of acoustic attenuation, beam pattern, and geometric spreading.
-\\ \\
-Intensity normalization can be performed either on a complete sonar image or on individual swaths. In this work, the correction is performed on individual swaths to enable real-time operation and maintain modularity in the processing chain. The method follows the framework described in \cite{side_scan_sonar_master_thesis}, where the measured sonar intensity $I(x,y)$ is modeled as a combination of two distinct components:
+Following the general reflectance illumination formulation used in \cite{side_scan_sonar_master_thesis}, the measured sonar intensity can be modeled as
 $$
     I(x, y) = R(x, y) \ast L(x, y)
 $$
-Here, $R(x,y)$ represents the \textit{``reflectance map''}, which describes the intrinsic acoustic backscatter of the seabed. It depends on physical factors such as surface roughness, material composition, and the local grazing angle. The second term, $L(x,y)$, represents the \textit{``illumination map''}, which models large scale variations in the measured signal caused by sonar specific effects like beam pattern, transmission loss, and range dependent attenuation. The operator $\ast$ denotes element wise multiplication since each pixels measured intensity is affected by both the true reflectivity of the seabed and the sonars illumination pattern at that location.
+where $R(x,y)$ represents the underlying seabed reflectivity and $L(x,y)$ represents the slowly varying illumination component. The reflectivity term captures local seabed properties such as roughness, material composition, and grazing angle response, while the illumination term captures larger scale effects such as transmission loss, beam pattern variation, and range dependent attenuation. The aim of intensity normalization is to estimate the illumination component and divide it out so that the remaining signal is dominated more by true seabed structure than by sonar induced brightness variation.
 \\ \\
-The goal of intensity normalization is to recover the true seabed reflectivity $R(x,y)$ by estimating and compensating for the illumination term $L(x,y)$. Once an estimate $\hat{L}(x,y)$ of the illumination map is obtained, the estimated reflectance map can be expressed as:
+Once an estimate $\hat{L}(x,y)$ of the illumination map is available, the normalized reflectivity estimate can be written as
 $$
     \hat{R}(x, y) = \frac{I(x, y)}{\hat{L}(x, y)} = R(x, y) \ast \frac{L(x, y)}{\hat{L}(x, y)}
 $$
-If the estimated illumination map $\hat{L}(x,y)$ closely approximates the true illumination $L(x,y)$, then $\hat{R}(x,y) \approx R(x,y)$, meaning the normalized image accurately represents the relative seabed reflectivity. This operation effectively removes large scale intensity variations caused by acoustic spreading, beam pattern effects, and medium absorption, ensuring that the remaining intensity variations primarily correspond to the physical properties of the seabed.
+If $\hat{L}(x,y)$ is a reasonable approximation of the true illumination field $L(x,y)$, then $\hat{R}(x,y)$ becomes a practical estimate of the relative seabed reflectivity. In other words, the normalization removes the dominant low frequency intensity envelope while preserving the local contrast that is more relevant for later mapping and feature extraction.
 \\ \\
-The illumination map $\hat{L}(x,y)$ varies slowly across the swath, representing low-frequency intensity trends rather than local seabed texture. It accounts for effects such as beam pattern variation, range dependent attenuation, and transducer gain. Several methods have been proposed to estimate this map. Filtering based approaches, such as mean or bilateral filtering, smooth the measured intensity to approximate the illumination field \cite{side_scan_sonar_master_thesis}. Physics based methods instead model the seabed as a Lambertian surface, using the relationship between grazing angle and backscatter strength to predict the illumination component \cite{side_scan_sonar_paper}.  
+The illumination map varies slowly across each swath and can therefore be approximated by a low pass estimate of the valid intensity samples. In Haraldstads master thesis, this slowly varying trend was modeled using smoothing cubic splines \cite{side_scan_sonar_master_thesis}. In the present implementation, however, the illumination map is estimated using a lightweight first order IIR low pass filtering approach based on the exponential moving average (EMA), since this is much better suited for real time processing.
 \\ \\
-In this work, $\hat{L}(x,y)$ is estimated using smoothing cubic splines, which model the large scale intensity envelope as a smooth polynomial function fitted along each individual swath. This method effectively captures gradual illumination trends without overfitting to local texture variations. The spline is obtained by minimizing the cost function:
+A general first order IIR filter can be written as
 $$
-    p \sum_{i=1}^{n} |I(i) - L(i)|^2 + (1 - p) \int_{1}^{n} |D^2L(t)|^2 \, dt
+    y(i) = a\,x(i) + (1-a)\,y(i-1)
 $$
-where the first term measures the deviation from the observed intensity $I(i)$, and the second penalizes excessive curvature to ensure a smooth illumination field. The parameter $p$ controls the balance between accuracy and smoothness, while $D^2L$ denotes the second derivative of $L$, enforcing continuity and smooth transitions across the swath.  
+where $x(i)$ is the input, $y(i)$ is the filtered output, and $a \in (0,1]$ controls the amount of smoothing. Using the same idea, the illumination envelope of each swath is estimated as
+$$
+    \hat{L}(i) = \alpha I(i) + (1-\alpha)\hat{L}(i-1)
+$$
+where $\alpha$ is the EMA smoothing factor. In practice, this filtering is applied independently to each swath and separately for the port and starboard channels. Although this does not produce a perfect illumination estimate, it captures the dominant low frequency trend sufficiently well for the present task while keeping the computational cost low.
 \\ \\
-After estimating $\hat{L}(i)$, the normalized reflectance profile is computed as:
+After estimating $\hat{L}(i)$, the normalized reflectance profile is computed as
 \begin{equation}
     \hat{R}(i) = \frac{I(i)}{\hat{L}(i)}
     \label{eq:local-map-generation-reflectivity-normalization}
 \end{equation}
-This operation removes large scale illumination effects such as acoustic spreading and transducer gain variation, producing a consistent brightness profile across range while preserving the high frequency variations related to true seabed texture.  
+This operation suppresses the large scale illumination effects and produces a more consistent intensity profile across the swath, while retaining the local variations more closely related to actual seabed texture.
 \\ \\
-The smoothing cubic spline approach provides a good compromise between computational efficiency and normalization accuracy. Unlike more complex illumination estimation techniques that require multi swath or physics based modeling, spline fitting can be computed quickly and independently for each swath, making it well suited for real-time embedded sonar processing. The smoothing parameter $p$ must be determined experimentally for the specific sonar setup, but it is typically small, on the order of magnitude less than $10^{-3}$. This ensures sufficient smoothing of large scale illumination variations while preserving fine scale seabed texture.
+The result of this normalization is a swath with a more uniform illumination profile, where artificial range dependent intensity variations are reduced and the seabed structure becomes visually and algorithmically clearer.
 \\ \\
-The result of the spline based normalization is a sonar image with a more uniform illumination profile, where artificial range dependent intensity variations are effectively suppressed. Figure \ref{fig:local-map-generation-intensity-normalization} illustrates this effect, the upper image shows the raw intensity with visible horizontal artifacts, while the lower image presents the normalized result with consistent brightness and clearer seabed texture across the swath.
-\\ \\
-This normalization method offers an effective balance between computational simplicity and correction accuracy. While more advanced reflectance estimation or global filtering approaches can produce smoother illumination compensation, they are typically too computationally heavy for real-time use. In contrast, the smoothing cubic spline method achieves sufficient accuracy for onboard sonar processing and real-time SLAM integration, making it a practical and efficient choice.
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.8\linewidth]{Pictures/Local_Map_Generation/Swath_Processing/intensity_normalized.png}
-    \caption{The top image shows the blind zone removed sonar image with raw intensity constructed from the first 1000 swaths of the dataset. The bottom image shows the same image after smoothing cubic spline normalization, where artificial horizontal lines are almost invisible and overall illumination is more uniform.\textsuperscript{\cite{side_scan_sonar_master_thesis}}}
-    \label{fig:local-map-generation-intensity-normalization}
-\end{figure}
+Overall, the EMA based normalization provides a practical balance between computational simplicity and correction quality. More advanced illumination estimation methods can in some cases provide a smoother or more globally consistent result, but they are also more computationally expensive. For onboard real time swath processing, the EMA based approach is therefore a suitable and efficient approximation.
 
 
 
 \subsubsection{Stacking and Reconstruction}
-After each swath has been corrected for pitch, roll, slant range distortion, and intensity attenuation, the resulting data represents a consistent estimate of the seabed backscatter reflectivity in horizontal ground coordinates. To reconstruct a continuous seafloor image, the processed swaths are stacked sequentially in the temporal order of acquisition. This stacking corresponds directly to the vessels forward motion, where each new ping contributes a narrow strip of intensity data aligned along the along track axis.
+After each swath has undergone pitch and roll correction, blind zone removal, and intensity normalization, the resulting data provides a cleaner and more consistent representation of the measured seabed backscatter along each ping. To reconstruct a continuous waterfall style image, the processed swaths are stacked sequentially in the temporal order of acquisition. This stacking follows the vehicles forward motion, where each new ping contributes a narrow strip of intensity data along the along track axis.
 \\ \\
-During stacking, each swath is positioned according to the vessels estimated trajectory obtained from the navigation system, ensuring that positional drift and motion induced offsets are minimized. The along track resolution of the reconstructed image is determined by the ping rate and vessel speed, while the across track resolution depends on the sonars range sampling and slant to ground conversion.
+During stacking, each swath is associated with the estimated vehicle trajectory from the navigation system, which preserves the temporal and spatial consistency of the reconstructed sequence. The along track resolution is mainly determined by the ping rate and vehicle speed, while the across track resolution depends on the sonar sampling in slant range.
 \\ \\
-The resulting 2D reconstruction forms an enhanced waterfall image where both axes correspond to physical ground distances and pixel intensity represents estimated seabed reflectivity. This corrected and normalized output marks the final stage of swath processing and serves as input for Cartesian projection and SLAM feature extraction.
-
+The resulting 2D reconstruction forms an improved waterfall image with reduced geometric and radiometric distortion compared to the raw input. This stacked output marks the final stage of swath processing in the present formulation and provides the input for later local map generation and feature extraction.

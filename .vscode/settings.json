@@ -32,5 +32,6 @@
     }
     ],
     "latex-workshop.latex.autoBuild.run": "onSave",
-    "latex-workshop.latex.recipe.default": "buildscript"
+    "latex-workshop.latex.recipe.default": "buildscript",
+    "sarif-viewer.connectToGithubCodeScanning": "off"
 }
