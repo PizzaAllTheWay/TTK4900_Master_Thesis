@@ -77,7 +77,14 @@ The main observation in the present results is that this mismatch appears to be 
 \noindent
 These figures show the main stages of the swath processing pipeline. The top image shows the raw swath received directly from the sonar. The middle image shows the result after blind zone removal using the corrected first return boundary together with the empirically tuned blind zone scaling discussed above. The bottom image shows the final output after intensity normalization, where the slowly varying illumination trend across the swath has been reduced.
 \\ \\
-The effect of the normalization is clearly visible, as the large scale range dependent brightness variation is reduced and the relative seabed structure becomes easier to interpret. At the same time, the background illumination is not perfectly uniform across all swaths. This is expected, since the EMA based method used here is only a lightweight approximation of the true illumination field rather than a full global estimate. Nevertheless, the result is sufficiently stable and visually consistent for real time swath processing and provides a practical compromise between quality and computational cost.
+The effect of the normalization is clearly visible, as the large scale range dependent brightness variation is reduced and the relative seabed structure becomes easier to interpret. Although the illumination is not perfectly uniform across all swaths, the overall result is stable and visually consistent. This is especially important because the normalized output obtained here is very similar to the result achieved with the cubic smoothing spline method used in Haraldstads thesis \cite{side_scan_sonar_master_thesis}, shown in Figure \ref{fig:results-local-map-generation-swath-processing-cubic-spline}. The main difference is therefore not primarily in the visual result, but in the computational cost. While the spline based approach can produce similarly good normalization, it is too computationally expensive for real time execution on embedded systems. The EMA based approach used here therefore provides a practical compromise, achieving nearly the same qualitative result while remaining lightweight enough for onboard real time swath processing.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.0\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing_Cubic_Smoothing_Spline.png}
+    \caption{Normalization result obtained using the cubic smoothing spline based method from Haraldstads thesis \cite{side_scan_sonar_master_thesis}. The visual result is very similar to the EMA based normalization used in this work, but the spline based approach is significantly more computationally expensive and is therefore not suitable for real time embedded operation.}
+    \label{fig:results-local-map-generation-swath-processing-cubic-spline}
+\end{figure}
 
 \newpage
 
