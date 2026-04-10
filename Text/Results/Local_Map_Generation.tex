@@ -6,7 +6,7 @@ This section presents the results obtained from the local map generation stage o
 The local map generation stage is evaluated qualitatively through intermediate sonar outputs and quantitatively through its computational performance. The goal is to examine whether the implemented processing chain produces physically reasonable swaths and maps while still remaining lightweight enough for real time deployment on embedded robotic platforms.
 
 \subsubsection{Parameters}
-\todo[inline]{Will need to modify later when other parts are done}
+\todo[inline]{Will need to modify later when other parts are done + need to make subtables liek table an dthen a space between each like specific one just to make it clear witch one it is piepline part we are talking about}
 The main algorithm specific parameters used in the swath processing experiments are summarized in Table \ref{tab:local_map_swath_params}. Only the most relevant tuning parameters are included here, since the remaining configuration mainly describes the physical sonar installation and vehicle specific mounting geometry rather than the core processing method.
 \begin{table}[H]
     \centering
@@ -37,11 +37,11 @@ The blind zone scale factors control how aggressively the near nadir region is r
 The swath processing stage was evaluated by inspecting the intermediate outputs produced after geometric correction, blind zone removal, and intensity normalization. These results show how the raw sonar measurements are progressively transformed into a cleaner and more consistent swath representation suitable for later map generation.
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing_Geometric_correction_zoomed_out.png}
+    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing/Geometric_correction_zoomed_out.png}
     
     \vspace{0.5em}
     
-    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing_Geometric_correction_zoomed_in.png}
+    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing/Geometric_correction_zoomed_in.png}
     \caption{Geometric correction result shown at two spatial scales. The upper image shows the full mission view of the estimated first bottom return boundary, while the lower image shows a zoomed in view of the same result. In both cases, the corrected boundary follows the expected seabed intersection geometry and separates the near nadir water column region from the valid seabed returns. Note that $h_{\mathrm{dvl}}$, $h_{\mathrm{port}}$, and $h_{\mathrm{stb}}$ are nearly identical, with a maximum difference of only about $0.2\,\mathrm{m}$. As a result, the three height curves largely overlap and visually appear as a single line, even though they represent three separate estimates.}
     \label{fig:results-local-map-generation-swath-processing-geometric-correction}
 \end{figure}
@@ -59,15 +59,15 @@ The main observation in the present results is that this mismatch appears to be 
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.8\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing_Raw.png}
+    \includegraphics[width=0.8\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing/Raw.png}
     
     \vspace{0.5em}
     
-    \includegraphics[width=0.8\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing_Blind_Zone_Removed.png}
+    \includegraphics[width=0.8\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing/Blind_Zone_Removed.png}
     
     \vspace{0.5em}
     
-    \includegraphics[width=0.8\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing_Intensity_Normalized.png}
+    \includegraphics[width=0.8\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing/Intensity_Normalized.png}
     \caption{Swath processing result shown at three stages of the pipeline zoomed in on a specific period in time. The top image shows the raw swath data before processing. The middle image shows the same swaths after blind zone removal, where the near nadir water column region has been masked out. The bottom image shows the final result after intensity normalization using the EMA based illumination estimate, where the large scale brightness variation is reduced and the relative seabed texture becomes clearer.}
     \label{fig:results-local-map-generation-swath-processing-pipeline}
 \end{figure}
@@ -81,7 +81,7 @@ The effect of the normalization is clearly visible, as the large scale range dep
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=1.0\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing_Cubic_Smoothing_Spline.png}
+    \includegraphics[width=1.0\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing/Cubic_Smoothing_Spline.png}
     \caption{Normalization result obtained using the cubic smoothing spline based method from Haraldstads thesis \cite{side_scan_sonar_master_thesis}. The visual result is very similar to the EMA based normalization used in this work, but the spline based approach is significantly more computationally expensive and is therefore not suitable for real time embedded operation.}
     \label{fig:results-local-map-generation-swath-processing-cubic-spline}
 \end{figure}
@@ -90,7 +90,7 @@ The effect of the normalization is clearly visible, as the large scale range dep
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=1.0\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing_Performance.png}
+    \includegraphics[width=1.0\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing/Performance.png}
     \caption{Runtime, CPU usage, and memory consumption of the swath processor during operation.}
     \label{fig:results-local-map-generation-swath-processing-performance}
 \end{figure}
@@ -105,8 +105,40 @@ Compared with a more computationally expensive smoothing based illumination esti
 
 
 
-\subsubsection{Probabalistic Map Generation}
+\subsubsection{Map Generation}
 \todo[inline]{Will need to modify later when other parts are done}
+
+\todo[inline]{when showing full map and map images talk about that the map generation depends very on state estimator and aiding measurements. As you can see when aiding measurements are on the map looks good however when DVL and or GPS drops out we start to dead recon and acimilate error and the map becomes less and less consistent. In addition when aiding measurements are back it will have a sharp correction making parts of the map look distorted or weird. So explain that the images 1,2,3 nice vs not nice 4,5 are when aiding ON vs dropout jesjes... as discussed in state estimaror part it is highly dependent on aiding measurements being available jesjes...
++ 1,2,3 with aiding very nice very cool indeed, then 4 we lose aidind start to accumulate drift so estimate we are going to fast so some areas are not iluminated, then 5 is where we have accumulated drift, but then we get aiding back and so we snap back and map becomes distorted now jesjes....}
+
+\todo[inline]{i results say that spikes are wgen we compute M and publish. The comput M algorithm from benchmarking took around 40 ms of runtime. However the graph shows 200 and even 600 ms peaks. This us due to ROS overhead, sending this much data through ROS2 of millions and 10 of millions of data points will give this a ount of peak, so again the peak is ROS2, and even so, the algorithm stays real time and the node runs smoothly without stutter or data drops, as ROS2 is built with robustness so even if it takes a bit to send alk the data the provesses can still run independent and agoritms can run independsntly of ROS2 message passing, very nice, jesjes basically even if it looks like those peaks the system is real time in practice and preformed well jesjes}
+
+\todo[inline]{here show the runtime results of average over time jesjes.}
+
+\todo[inline]{also explain that decreasing chunk size to a cetain extent can help a bit as chunk segmentation will happen on finer level taking with less zero spaces for the map, another thing to consider is decreasing chunkg age and N samples, these 2 are the big contributing factor responsible for increasing map size. BUT the BIGEST contributor is $map_resolution$!!! If we decrease $map_resolution$ from 0.03 m/pixel to 0.06 m/pixel, then we half the memory size and half the runtime as well! The cpu load also changes and is substantially smaller.}
+
+\todo[inline]{ALSO add a table where we decreased map resolution to 0.06 m/pixel AND performance chart AND a performance graph AND the map final then. explain then you lose some information. However not that much since its still good for the image processing and can't really see it with the naked eye. So basically if the sonar has very high resolution consider downscaling the map resolution. BUT 10x downscaling map resolution will start to see information loss that might affect final results, so this is a balancing act}
+
+\todo[inline]{WARNING: mention that how it is right now is fine! we left it on 0.03 m/pixel as its realtime already BUT this 0.06 m/pixel was to showcase how drastically different changing some parameters can affect the performance.}
+
+\todo[inline]{REMEMBER the notes with performance charts!!!!}
+
+\todo[inline]{Basically all this to say if you have contraints on compute or lower compute budget on lower end drones you can scale this algorithm very easily to the specific drone needs by simply tuning a frew variables jesjes}
+
+Order of text:
+- Introduction
+- Parameters $\varepsilon_{\mathrm{approx}} and \varepsilon_{\mathrm{prob}}$ and stuf like that (Need to be added to the common parameters chapter as its own sub table)
+- Pruning stages
+- $P_m$ and $V_m$
+- P and V
+- M
+- Full Map
+- MAP: The good parts of map
+- MAP: Dead reckoning part
+- MAP: Aiding measurement correction
+- Performance + run table
+- Performance with different params + run table
+
 
 
 
