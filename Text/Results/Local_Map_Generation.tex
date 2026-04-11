@@ -1,31 +1,52 @@
 \subsection{Local Map Generation}
 \subsubsection{Overview}
 \todo[inline]{Will need to modify later when other parts are done}
-This section presents the results obtained from the local map generation stage of the pipeline. The evaluation focuses on the swath processing, the probabilistic map generation stage, and the feature extraction stage. Particular attention is given to how the raw side scan sonar measurements are progressively transformed into cleaner and more consistent data products that are suitable for later SLAM processing.
+\todo[inline]{Rewrite so it also iclude feature extraction later when we have results jesjes}
+This section presents the results obtained from the local map generation stage of the pipeline. The evaluation covers both the swath processing stage and the local map generation stage, with emphasis on how the raw side scan sonar measurements are progressively transformed into cleaner and more spatially consistent intermediate representations and, ultimately, into a local map suitable for later SLAM processing.
 \\ \\
-The local map generation stage is evaluated qualitatively through intermediate sonar outputs and quantitatively through its computational performance. The goal is to examine whether the implemented processing chain produces physically reasonable swaths and maps while still remaining lightweight enough for real time deployment on embedded robotic platforms.
+The results are assessed in two complementary ways. First, the intermediate and final outputs are examined qualitatively in order to evaluate whether the implemented methods produce physically meaningful swaths, candidate map support, and local reflectivity maps. Second, the computational performance is evaluated quantitatively through runtime, CPU usage, and memory consumption in order to determine whether the full processing chain remains lightweight enough for real-time deployment on embedded robotic platforms.
+\\ \\
+For the swath processing stage, the results focus on geometric correction, blind zone removal, intensity normalization, and the corresponding runtime behavior. For the map generation stage, the results focus on the effect of probabilistic pruning, the construction of the persistent map states, the final normalized local map, the influence of the fast gap filling stage, and the computational cost of the complete mapping pipeline.
+\\ \\
+It is important to note that the interpretation of the map generation results depends strongly on the quality of the underlying state estimate and on the availability of aiding measurements. When aiding measurements are available, the local maps are expected to remain spatially consistent and visually coherent. During periods of dead reckoning, however, accumulated estimator drift can gradually degrade the map quality, and when aiding measurements return, the corresponding estimator correction can introduce visible distortions in the accumulated map. The following subsections therefore evaluate not only the algorithm itself, but also how its practical output is influenced by the estimator conditions under which it operates.
+
+
+
+\newpage
+
+
 
 \subsubsection{Parameters}
-\todo[inline]{Will need to modify later when other parts are done + need to make subtables liek table an dthen a space between each like specific one just to make it clear witch one it is piepline part we are talking about}
-The main algorithm specific parameters used in the swath processing experiments are summarized in Table \ref{tab:local_map_swath_params}. Only the most relevant tuning parameters are included here, since the remaining configuration mainly describes the physical sonar installation and vehicle specific mounting geometry rather than the core processing method.
+The main tuning parameters used in the local map generation experiments are summarized in Table \ref{tab:local-map-generation-parameters}. Only the parameters most relevant to the behavior, quality, and computational cost of the implemented methods are included here. Configuration values related mainly to hardware specific mounting geometry or programmer facing implementation details are omitted, since they are less important for interpreting the algorithmic results.
 \begin{table}[H]
     \centering
-    \caption{Swath processing parameters}
-    \label{tab:local_map_swath_params}
+    \caption{Main parameters used in the local map generation experiments.}
+    \label{tab:local-map-generation-parameters}
     \begin{tabular}{l l}
         \hline
         Parameter & Value \\
         \hline
         Illumination EMA period & 200 \\
-        Port blind zone scale factor & 0.45 \\
-        Starboard blind zone scale factor & 0.35 \\
+        Port blind zone scale & 0.45 \\
+        Starboard blind zone scale & 0.35 \\
+        Dense map update interval & 100 swaths \\
+        Maximum map update gap & 5.0 s \\
+        Map resolution & 0.03 m/pixel \\
+        Chunk size & 64 pixels \\
+        Maximum chunk age & 2 \\
+        Approximate pruning threshold $\varepsilon_{\mathrm{approx}}$ & 0.96850 \\
+        Probabilistic pruning threshold $\varepsilon_{\mathrm{prob}}$ & 0.00187 \\
+        Minimum fill neighbors & 3 \\
+        Maximum fill passes & 5 \\
         \hline
     \end{tabular}
 \end{table}
 \noindent
-The illumination EMA period controls how slowly the estimated illumination envelope is allowed to vary across each swath during intensity normalization. Larger values produce a smoother illumination estimate and stronger normalization, while smaller values retain more local variation but can lead to a noisier correction.
+The swath processing parameters consist of the illumination EMA period and the channel dependent blind zone scale factors. The EMA period controls how slowly the estimated illumination envelope is allowed to vary during intensity normalization, while the blind zone scale factors determine how aggressively the near nadir region is removed for the port and starboard channels. These values were tuned empirically to obtain a reasonable separation between the water column and the first valid seabed returns in the measured sonar data.
 \\ \\
-The blind zone scale factors control how aggressively the near nadir region is removed for the port and starboard channels. These values were tuned empirically to obtain a reasonable separation between the water column and the first valid seabed returns in the measured sonar data. The fact that the two channels use different values reflects small practical differences in the real sonar response and installation geometry rather than a change in the underlying algorithm.
+The map generation parameters control both map quality and computational cost. The dense map update interval and maximum update gap determine how often the dense local map is rebuilt and published. The map resolution sets the final spatial sampling of the generated map and is one of the most important parameters for both runtime and memory usage. The chunk size and maximum chunk age control the sparse chunked map representation, affecting how long old map regions are retained and how large the active map becomes in practice.
+\\ \\
+The two pruning thresholds, $\varepsilon_{\mathrm{approx}}$ and $\varepsilon_{\mathrm{prob}}$, govern how aggressively low contribution candidate cells are removed during the approximate and probabilistic pruning stages. These parameters strongly influence the tradeoff between retained map detail and computational efficiency. Finally, the gap filling parameters determine how aggressively small holes in the normalized local map are repaired, where the minimum number of valid neighbors controls how conservative the fill operation is and the number of fill passes determines how many times the local repair step is allowed to propagate.
 
 
 
@@ -34,6 +55,7 @@ The blind zone scale factors control how aggressively the near nadir region is r
 
 
 \subsubsection{Swath Processing}
+\paragraph{Geometric correction} \mbox{}\\[0.5em] \noindent
 The swath processing stage was evaluated by inspecting the intermediate outputs produced after geometric correction, blind zone removal, and intensity normalization. These results show how the raw sonar measurements are progressively transformed into a cleaner and more consistent swath representation suitable for later map generation.
 \begin{figure}[H]
     \centering
@@ -57,17 +79,18 @@ The main observation in the present results is that this mismatch appears to be 
 
 \newpage
 
+\paragraph{Processing} \mbox{}\\[0.01em] \noindent
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.8\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing/Raw.png}
+    \includegraphics[width=0.7\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing/Raw.png}
     
-    \vspace{0.5em}
+    \vspace{0.01em}
     
-    \includegraphics[width=0.8\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing/Blind_Zone_Removed.png}
+    \includegraphics[width=0.7\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing/Blind_Zone_Removed.png}
     
-    \vspace{0.5em}
+    \vspace{0.01em}
     
-    \includegraphics[width=0.8\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing/Intensity_Normalized.png}
+    \includegraphics[width=0.7\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing/Intensity_Normalized.png}
     \caption{Swath processing result shown at three stages of the pipeline zoomed in on a specific period in time. The top image shows the raw swath data before processing. The middle image shows the same swaths after blind zone removal, where the near nadir water column region has been masked out. The bottom image shows the final result after intensity normalization using the EMA based illumination estimate, where the large scale brightness variation is reduced and the relative seabed texture becomes clearer.}
     \label{fig:results-local-map-generation-swath-processing-pipeline}
 \end{figure}
@@ -88,6 +111,7 @@ The effect of the normalization is clearly visible, as the large scale range dep
 
 \newpage
 
+\paragraph{Performance} \mbox{}\\[0.5em] \noindent
 \begin{figure}[H]
     \centering
     \includegraphics[width=1.0\linewidth]{Pictures/Results/Local_Map_Generation/Swath_Processing/Performance.png}
@@ -106,39 +130,290 @@ Compared with a more computationally expensive smoothing based illumination esti
 
 
 \subsubsection{Map Generation}
-\todo[inline]{Will need to modify later when other parts are done}
+\paragraph{Pruning stage} \mbox{}\\[0.5em] \noindent
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/Q_m_pruned_1_zoomed_out.png}
+    
+    \vspace{0.01em}
+    
+    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/Q_m_pruned_2_zoomed_out.png}
+    
+    \vspace{0.01em}
+    
+    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/Q_m_pruned_3_zoomed_out.png}
+    \caption{Effect of the two pruning stages on the candidate measurement set $Q_m$ shown at full spatial scale for one selected swath. The top image shows the initial candidate set after geometric footprint generation, the middle image shows the result after the fast approximate pruning stage, and the bottom image shows the final result after the probabilistic pruning stage.}
+    \label{fig:results-local-map-generation-map-generation-pruning-zoomed-out}
+\end{figure}
 
-\todo[inline]{when showing full map and map images talk about that the map generation depends very on state estimator and aiding measurements. As you can see when aiding measurements are on the map looks good however when DVL and or GPS drops out we start to dead recon and acimilate error and the map becomes less and less consistent. In addition when aiding measurements are back it will have a sharp correction making parts of the map look distorted or weird. So explain that the images 1,2,3 nice vs not nice 4,5 are when aiding ON vs dropout jesjes... as discussed in state estimaror part it is highly dependent on aiding measurements being available jesjes...
-+ 1,2,3 with aiding very nice very cool indeed, then 4 we lose aidind start to accumulate drift so estimate we are going to fast so some areas are not iluminated, then 5 is where we have accumulated drift, but then we get aiding back and so we snap back and map becomes distorted now jesjes....}
+\newpage
 
-\todo[inline]{i results say that spikes are wgen we compute M and publish. The comput M algorithm from benchmarking took around 40 ms of runtime. However the graph shows 200 and even 600 ms peaks. This us due to ROS overhead, sending this much data through ROS2 of millions and 10 of millions of data points will give this a ount of peak, so again the peak is ROS2, and even so, the algorithm stays real time and the node runs smoothly without stutter or data drops, as ROS2 is built with robustness so even if it takes a bit to send alk the data the provesses can still run independent and agoritms can run independsntly of ROS2 message passing, very nice, jesjes basically even if it looks like those peaks the system is real time in practice and preformed well jesjes}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/Q_m_pruned_1_zoomed_in.png}
+    
+    \vspace{0.01em}
+    
+    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/Q_m_pruned_2_zoomed_in.png}
+    
+    \vspace{0.01em}
+    
+    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/Q_m_pruned_3_zoomed_in.png}
+    \caption{Zoomed view of the same pruning sequence as in Figure \ref{fig:results-local-map-generation-map-generation-pruning-zoomed-out}, highlighting how the discrete candidate cells are reduced while preserving the main illuminated support region.}
+    \label{fig:results-local-map-generation-map-generation-pruning-zoomed-in}
+\end{figure}
 
-\todo[inline]{here show the runtime results of average over time jesjes.}
+\newpage
 
-\todo[inline]{also explain that decreasing chunk size to a cetain extent can help a bit as chunk segmentation will happen on finer level taking with less zero spaces for the map, another thing to consider is decreasing chunkg age and N samples, these 2 are the big contributing factor responsible for increasing map size. BUT the BIGEST contributor is $map_resolution$!!! If we decrease $map_resolution$ from 0.03 m/pixel to 0.06 m/pixel, then we half the memory size and half the runtime as well! The cpu load also changes and is substantially smaller.}
+\noindent
+These figures illustrate the effect of the two stage pruning strategy on the temporary candidate set $Q_m$ for one selected swath. The initial candidate generation step produces a very large number of geometrically valid cells, here on the order of roughly $4\times 10^5$ candidates, because the full sonar footprint is sampled densely before any probabilistic filtering is applied. While this first set is useful as a geometric over approximation of where the ping could plausibly have illuminated the map, it is far too large to carry forward directly into the later interpolation and accumulation stages without unnecessary computational cost.
+\\ \\
+The first pruning stage applies the approximate beam model and acts mainly as a fast early rejection step. Its main effect is to remove weak candidates near the beam fringe, especially those lying far to the sides of the sampled sector where the expected beam contribution is already very small. This reduces the candidate set drastically, in the example shown here from roughly $413\,550$ cells down to about $52\,368$ cells, while largely preserving the main body of the illuminated support. As seen in both Figures \ref{fig:results-local-map-generation-map-generation-pruning-zoomed-out} and \ref{fig:results-local-map-generation-map-generation-pruning-zoomed-in}, the approximate pruning mainly narrows the angular support of the footprint, whereas the overall along range extent remains comparatively similar.
+\\ \\
+The second pruning stage then applies the more accurate probabilistic beam model. This stage is less aggressive in angular width, but further removes candidates whose contribution is still too small to be physically meaningful when both range and angular support are taken into account. In the example shown here, the candidate count is reduced further from about $52\,368$ to about $49\,781$ cells. The main visual effect is that some of the most distant low probability support is removed, while the final retained set remains concentrated in the region that is most likely to have been illuminated by the current ping. At the same time, the corresponding $P_m$ values of the surviving cells are preserved for later reuse in the accumulation stage.
+\\ \\
+The zoomed views make it easier to see that the final support is sparse and structured rather than dense over the full map. They also reveal small isolated gaps between some discrete candidate cells. These arise from the discretization step when the continuous footprint is snapped to the map grid. In practice, these gaps are typically very local, often on the order of a single cell, and are therefore not problematic for the final map construction since they are either compensated by overlapping neighboring pings or repaired later by the local gap filling stage. A finer map resolution could reduce such discretization gaps further, but this would also increase both runtime and memory cost significantly. The present parameter choice therefore represents a practical balance, where the vast majority of physically meaningful illuminated support is retained while the computational load is kept manageable for real time operation.
 
-\todo[inline]{ALSO add a table where we decreased map resolution to 0.06 m/pixel AND performance chart AND a performance graph AND the map final then. explain then you lose some information. However not that much since its still good for the image processing and can't really see it with the naked eye. So basically if the sonar has very high resolution consider downscaling the map resolution. BUT 10x downscaling map resolution will start to see information loss that might affect final results, so this is a balancing act}
+\newpage
 
-\todo[inline]{WARNING: mention that how it is right now is fine! we left it on 0.03 m/pixel as its realtime already BUT this 0.06 m/pixel was to showcase how drastically different changing some parameters can affect the performance.}
+\paragraph{Temporary measurement states $P_m$ and $V_m$} \mbox{}\\[0.5em] \noindent
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.0\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/P_m.png}
+    \caption{Visualization of the temporary probabilistic measurement support $P_m$ for the same selected swath as in the pruning results. The color scale shows the beam based support assigned to each surviving candidate cell after probabilistic pruning.}
+    \label{fig:results-local-map-generation-map-generation-pm}
+\end{figure}
 
-\todo[inline]{REMEMBER the notes with performance charts!!!!}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.0\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/V_m.png}
+    \caption{Visualization of the temporary interpolated intensity measurement map $V_m$ for the same selected swath. The color scale shows the reflectivity value assigned to each surviving candidate cell after backprojection into the processed swath and local interpolation.}
+    \label{fig:results-local-map-generation-map-generation-vm}
+\end{figure}
 
-\todo[inline]{Basically all this to say if you have contraints on compute or lower compute budget on lower end drones you can scale this algorithm very easily to the specific drone needs by simply tuning a frew variables jesjes}
+\newpage
 
-Order of text:
-- Introduction
-- Parameters $\varepsilon_{\mathrm{approx}} and \varepsilon_{\mathrm{prob}}$ and stuf like that (Need to be added to the common parameters chapter as its own sub table)
-- Pruning stages
-- $P_m$ and $V_m$
-- P and V
-- M
-- Full Map
-- MAP: The good parts of map
-- MAP: Dead reckoning part
-- MAP: Aiding measurement correction
-- Performance + run table
-- Performance with different params + run table
+\noindent
+After probabilistic pruning, each surviving candidate cell is assigned two temporary quantities for the current ping, the probabilistic support value $P_m$ and the interpolated intensity value $V_m$. Figure \ref{fig:results-local-map-generation-map-generation-pm} shows how $P_m$ is distributed over the retained candidate support. As expected from the beam model, the strongest support is concentrated in the part of the swath that is most plausibly illuminated by the current ping, while support decreases away from this region. This confirms that the pruning stage does not only reduce the number of candidates, but also leaves behind a structured probabilistic support field that is physically consistent with the expected sonar footprint.
+\\ \\
+Figure \ref{fig:results-local-map-generation-map-generation-vm} shows the corresponding temporary intensity measurement map $V_m$. Unlike $P_m$, which reflects beam support, $V_m$ reflects the processed swath intensity assigned to the surviving cells after backprojection and interpolation. The two maps therefore look related but clearly different. The support field $P_m$ is dominated by the beam geometry, whereas $V_m$ follows the measured reflectivity structure taken from the processed swath. In the example shown here, the near part of the retained swath appears darker while the farther part becomes brighter, indicating that the interpolated reflectivity varies substantially over the selected support region.
+\\ \\
+This difference between $P_m$ and $V_m$ is important, since they represent two different parts of the measurement model. The quantity $P_m$ describes how strongly a cell is supported by the beam geometry, while $V_m$ describes what reflectivity value that cell receives from the processed swath. The map generator does not accumulate intensity alone, but rather combines both quantities later through probability weighted accumulation. Another important observation is that $V_m$ is computed only for the already pruned support, not for the full raw candidate set. This is one of the main reasons the algorithm remains efficient in practice, since the more expensive interpolation step is evaluated only for cells that have already been judged sufficiently relevant by the pruning stage.
 
+\newpage
+
+\paragraph{Persistent states $P$ and $V$} \mbox{}\\[0.5em] \noindent
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/V_and_P_1.png}
+    
+    \vspace{0.01em}
+    
+    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/V_and_P_2.png}
+    
+    \vspace{0.01em}
+    
+    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/V_and_P_3.png}
+    \caption{Evolution of the persistent map states $V$ and $P$ over time. The gray grid indicates the active chunk structure used to store the accumulated local map states.}
+    \label{fig:results-local-map-generation-map-generation-persistent-states}
+\end{figure}
+
+\newpage
+
+\noindent
+While $P_m$ and $V_m$ describe only the temporary measurement contribution from a single ping, the quantities $P$ and $V$ represent the persistent states obtained after accumulation over many successive pings. Here, $P$ stores the accumulated observation support, while $V$ stores the accumulated probability weighted intensity. These quantities are therefore not yet the final normalized map image, but rather the intermediate persistent states from which the final map is later constructed.
+\\ \\
+Figure \ref{fig:results-local-map-generation-map-generation-persistent-states} shows how these persistent states grow over time as new swaths are incorporated. The overall illuminated support gradually expands along the vehicle trajectory, while the internal spatial structure becomes richer as repeated measurements are accumulated. This makes the difference between the temporary and persistent states very clear: the temporary states describe only the current swath, whereas the persistent states represent the cumulative measurement history retained inside the local map.
+\\ \\
+An important part of this process is the chunked sparse map representation. Instead of storing the full map as one dense image at all times, the accumulated states are stored only inside active spatial chunks. Each gray square in Figure \ref{fig:results-local-map-generation-map-generation-persistent-states} corresponds to one active chunk, and each chunk contains a fixed local grid of map cells, here set by the chosen chunk size of $64 \times 64$ pixels. This makes it possible to grow the map dynamically only where measurements actually exist, while avoiding unnecessary allocation in empty space. As the map evolves, new chunks are allocated where new support appears, previously active chunks remain alive for a limited time, and old untouched chunks are eventually removed by the chunk aging logic. This behavior can be seen directly in the sequence, where some older outer chunks disappear as the vehicle moves forward and the local map focus shifts.
+\\ \\
+The number of active chunks that appear at any given time is also influenced by the map update policy. In the present setup, the dense map is rebuilt either after every 100 buffered swaths or when the time gap between updates reaches $5\,\mathrm{s}$ depending on the tuned parameters in Table \ref{tab:local-map-generation-parameters}. These settings determine how much accumulated support is allowed to build up before the next map output is formed, and therefore also influence how large the active chunk region becomes in practice. In simple terms, more retained swaths between updates generally produce a larger active support region, while fewer retained swaths keep the local map more compact. Together with the chunk size and chunk age, these parameters therefore help determine both the visible spatial extent of the persistent states and the computational cost of maintaining them.
+\\ \\
+The chunk management is important both for memory and runtime. Memory usage stays bounded because only the active local region is retained, and computational cost is reduced because later stages such as dense map construction and gap filling only need to operate on the chunks that currently contain valid accumulated data. At the same time, the results show that even with this bounded representation the number of retained illuminated cells quickly becomes very large, reaching on the order of several million map pixels. This highlights why the earlier pruning stages are necessary: without aggressive reduction of the temporary support before accumulation, the persistent states would grow too quickly to remain practical for real-time use.
+\\ \\
+A final observation from these figures is that the persistent states $P$ and $V$ are clearly related but visually different. The state $P$ reflects how strongly different parts of the map have been supported by repeated probabilistic beam observations, while $V$ reflects the accumulated weighted intensity structure. In other words, $P$ describes where the map is well supported, whereas $V$ describes what weighted reflectivity information has been accumulated there. Only in the later normalization step are these two persistent states combined to produce the final local reflectivity map.
+
+\newpage
+
+\paragraph{Normalized map construction $M$} \mbox{}\\[0.5em] \noindent
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.80\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/M_1.png}
+    \caption{Normalized local map $M$ at the first selected time instant.}
+    \label{fig:results-local-map-generation-map-generation-normalized-map-1}
+\end{figure}
+
+\vspace{-0.8em}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.80\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/M_2.png}
+    \caption{Normalized local map $M$ at the second selected time instant.}
+    \label{fig:results-local-map-generation-map-generation-normalized-map-2}
+\end{figure}
+
+\newpage
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.80\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/M_3.png}
+    \caption{Normalized local map $M$ at the third selected time instant.}
+    \label{fig:results-local-map-generation-map-generation-normalized-map-3}
+\end{figure}
+\noindent
+These figures show the construction of the normalized local map $M$ from the previously accumulated persistent states $V$ and $P$. Thus, the three maps shown here correspond directly to the same three time instants used in Figure \ref{fig:results-local-map-generation-map-generation-persistent-states}, now converted into the final dense reflectivity map through the normalization step. In this sense, the present results show the actual image produced from the accumulated chunk based support, rather than the intermediate persistent states themselves.
+\\ \\
+The normalization combines the accumulated weighted intensity and accumulated support into a dense local image, and the remaining small gaps are then repaired by the local gap filling stage. The result is therefore the final local map output produced by the map generation algorithm at each of the shown time instants. Compared with the processed swath representation, the mapped features now appear much more geometrically meaningful. In the processed swath domain, many structures look compressed, warped, or difficult to interpret because they are still tied to the sonar acquisition geometry. After map construction, however, the same structures appear in a spatial form that is much closer to their actual layout on the seafloor.
+\\ \\
+A clear qualitative observation is that the reconstructed map reveals seabed features with good contrast and continuity, indicating that the combined stages of probabilistic pruning, intensity interpolation, persistent accumulation, normalization, and local fill in work together as intended. At the same time, some local stretching and mild geometric distortion can still be observed in parts of the map. This is expected, since the final map quality is fundamentally limited by the quality of the underlying state estimate used during map accumulation. In other words, the map reconstruction can only be as geometrically accurate as the estimated vehicle motion and pose alignment allow.
+\\ \\
+Even so, the overall result is clearly usable and captures the main seabed structure well. The remaining distortion appears relatively moderate, and it is reasonable to expect that further parameter tuning in the state estimator, especially in the forward motion consistency and aiding quality, would make the local maps even more geometrically accurate. As a result, these normalized map results indicate that the implemented map generation stage already produces a meaningful and practically useful local representation of the seafloor for the later stages of the SLAM pipeline.
+
+\newpage
+
+\paragraph{Full mission map reconstructed mosaic} \mbox{}\\[0.5em] \noindent
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.00\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/Full_Map_zoomed_out.png}
+    \caption{Full local map result accumulated over the complete mission.}
+    \label{fig:results-local-map-generation-map-generation-full-map}
+\end{figure}
+\noindent
+Figure \ref{fig:results-local-map-generation-map-generation-full-map} shows the full map reconstructed over the complete mission. The main observation here is simply the scale of the result. The mapped area is very large, spanning roughly $1400 \times 600\,\mathrm{m}$, and with a map resolution of $0.03\,\mathrm{m/pixel}$ this corresponds to a very large dense map representation. In practice, the final map reaches on the order of gigabytes without compression, which highlights the importance of the sparse chunked representation used internally during processing.
+\\ \\
+At this scale, the purpose of the figure is mainly to show the overall spatial extent of the reconstruction and the fact that the map generation pipeline is able to produce a mission scale mosaic from the processed swaths. The finer local quality of different map regions is difficult to judge from the full overview alone and is therefore examined in the following subsections using more zoomed in examples. Those later results are used to discuss where the map is well aligned, where it degrades, and how this depends on the quality of the underlying state estimate and aiding measurements.
+
+\newpage
+
+\paragraph{Map quality under good aiding conditions} \mbox{}\\[0.5em] \noindent
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/Full_Map_zoomed_in_1.png}
+    
+    \vspace{0.01em}
+    
+    \includegraphics[width=0.8\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/Full_Map_zoomed_in_2.png}
+    \caption{Examples of local map regions reconstructed during periods with good aiding availability.}
+    \label{fig:results-local-map-generation-map-generation-map-under-good-aiding}
+\end{figure}
+
+\newpage
+
+\noindent
+Figure \ref{fig:results-local-map-generation-map-generation-map-under-good-aiding} shows two zoomed in regions of the final mission map during periods where DVL aiding was available. In these parts of the mission, the state estimate remained well constrained and the accumulated map therefore appears spatially coherent over longer distances. The reconstructed swaths overlap consistently, the mapped corridor remains geometrically stable, and the local reflectivity structure is preserved clearly enough to reveal meaningful seabed texture and larger visible features.
+\\ \\
+A clear observation in both examples is that the map strips align well from pass to pass, with only limited visible distortion. This is the expected behavior when DVL aiding is present, since the estimator drift remains small and the map accumulation can stay consistent over time. These examples therefore illustrate the nominal operating case of the map generation pipeline, when DVL aiding is available, the algorithm is able to produce a stable and visually consistent local map that is well suited for later feature extraction and matching.
+
+\newpage
+
+\paragraph{Map degradation during dead reckoning} \mbox{}\\[0.5em] \noindent
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.00\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/Full_Map_zoomed_in_3.png}
+    \caption{Example of map degradation during a period with lost aiding.}
+    \label{fig:results-local-map-generation-map-generation-dead-reckoning}
+\end{figure}
+\noindent
+Figure \ref{fig:results-local-map-generation-map-generation-dead-reckoning} shows a part of the mission where DVL aiding was lost and the estimator therefore had to rely more heavily on dead reckoning. In this situation, the pose error accumulates over time, and the effect becomes directly visible in the reconstructed map. The mapped swaths no longer overlap as tightly as before, the corridor becomes unnaturally sparse, and the reconstruction appears stretched along the trajectory.
+\\ \\
+Here, the accumulated state estimation error causes the vehicle motion to be reconstructed as larger than it actually was. As a result, consecutive swaths are placed too far apart in the map, which makes the local support region wider and more spread out than expected. This not only degrades the spatial consistency of the final map, but also increases the computational cost of the map generation stage, since larger candidate regions must then be generated, pruned, interpolated, and accumulated.
+\\ \\
+This example therefore illustrates an important dependency of the local map generation stage, the quality of the final map is strongly tied to the quality of the underlying state estimate. When aiding is available, the map remains compact and coherent, but when aiding is lost and dead reckoning error grows, the resulting reconstruction becomes progressively less reliable and may no longer be suitable for accurate spatial interpretation or later feature matching.
+
+\newpage
+
+\paragraph{Map distortion after aiding correction} \mbox{}\\[0.5em] \noindent
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.00\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/Full_Map_zoomed_in_4.png}
+    \caption{Example of map distortion after estimator correction following a period of dead reckoning.}
+    \label{fig:results-local-map-generation-map-generation-aiding-correction}
+\end{figure}
+\noindent
+Figure \ref{fig:results-local-map-generation-map-generation-aiding-correction} shows the case where aiding measurements return after a longer period of dead reckoning. During the dead reckoning phase, the pose error accumulates progressively and the map is built on top of that drifting estimate. When aiding becomes available again, the estimator corrects the pose, and this correction appears directly in the accumulated map as a geometric discontinuity.
+\\ \\
+The visible result is a local distortion where previously accumulated map content no longer aligns well with the newly corrected trajectory. This can appear as a sudden spatial snap, local bending of the mapped corridor, overlap mismatch, or multiple swath regions intersecting in an unnatural way. The stronger the accumulated error before aiding returns, the stronger this distortion becomes.
+\\ \\
+This example highlights another important dependency of the map generation stage. The map generator itself continues to accumulate measurements consistently with respect to the current state estimate, but if that state estimate changes sharply after a correction, older accumulated map contributions from the dead reckoning period may remain geometrically inconsistent with the newer corrected ones. As a result, the final distortion seen here is not caused by the probabilistic mapping model itself, but by the interaction between accumulated map states and a delayed correction in the underlying navigation estimate.
+
+\newpage
+
+\paragraph{Performance} \mbox{}\\[0.5em] \noindent
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.00\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/Performance.png}
+    \caption{Runtime, CPU usage, and memory consumption of the local map generation stage using the default parameter set.}
+    \label{fig:results-local-map-generation-map-generation-performance}
+\end{figure}
+
+\begin{table}[H]
+    \centering
+    \caption{Runtime summary for the local map generation stage using the default parameter set.}
+    \label{tab:results-local-map-generation-map-generation-runtime-default}
+    \begin{tabular}{l c c c}
+        \hline
+        Function/Stage & Calls & Average runtime [ms] & Peak runtime [ms] \\
+        \hline
+        Swath buffering and accumulation into map states & 10212 & 6.466 & 14.998 \\
+        Dense map construction step & 105 & 51.052 & 208.027 \\
+        \hline
+    \end{tabular}
+\end{table}
+\noindent
+Figure \ref{fig:results-local-map-generation-map-generation-performance} and Table \ref{tab:results-local-map-generation-map-generation-runtime-default} summarize the computational performance of the full local map generation stage using the default parameter set. Two parts of the implementation are especially relevant here. The first is the buffering step, where each processed swath is inserted into the persistent map states through candidate generation, pruning, interpolation, and accumulation. The second is the dense map construction step, where the accumulated sparse states are converted into the final local map image and then published.
+\\ \\
+The buffering step remains comparatively lightweight. Even though this stage contains the probabilistic pruning, backprojection, interpolation, and persistent accumulation logic, its average runtime is only about $6.5\,\mathrm{ms}$, with a peak below $15\,\mathrm{ms}$. This shows that the core probabilistic map generation itself is already efficient and is not the dominant bottleneck of the system. In practice, this part of the implementation is sufficiently lightweight to run comfortably on an embedded SBC.
+\\ \\
+The larger runtime peaks are mainly associated with the dense map construction and publication step. The average runtime of this step is about $51,\mathrm{ms}$, while the measured algorithmic peak is about $208,\mathrm{ms}$. This is consistent with the fact that this stage must traverse all active chunks, reconstruct the dense image, and run the local gap filling stage before the result is published. In the full runtime trace, however, the observed peaks reach up to about $600,\mathrm{ms}$, which shows that a substantial part of the total peak cost does not come from the map calculation alone, but from ROS2 publishing overhead. In other words, once the dense map has been constructed, a large additional cost is incurred by moving, copying, and transmitting the resulting image through the ROS2 communication layer. The main practical bottleneck is therefore not only the normalization and reconstruction itself, but also the memory movement and message passing required to handle a very large dense map output.
+\\ \\
+An important observation is that the runtime peaks correlate well with periods where the state estimate degrades, especially during dead reckoning. As discussed earlier in the state estimation results and in Figure \ref{fig:results-state-estimation-position}, when aiding is lost the accumulated pose error causes the reconstructed swaths to spread out more than they should. This leads directly to larger candidate regions, more active chunks, and a larger final dense map. As a result, both memory usage and runtime increase during these periods. In this sense, dead reckoning not only degrades map quality, but also increases the computational cost of the map generation stage.
+\\ \\
+Even under these more demanding conditions, however, the implementation remains real time in practice. The node continues to run smoothly without instability or dropped processing. This is important, because the largest peaks seen in the measured runtime are not purely algorithmic. A significant part of the peak cost comes from handling and publishing large map outputs through ROS2, which introduces additional overhead beyond the core map calculations themselves. Thus, although the plotted peaks can appear large, the underlying map generation algorithm remains computationally manageable and the overall system still behaves robustly in real operation.
+\\ \\
+From a tuning perspective, these results also indicate which parameters are most important for performance. The two pruning thresholds can reduce compute by making candidate support smaller, but in the present implementation the probabilistic stages are already relatively efficient. More important in practice are the parameters that control the size of the accumulated map state and the final dense image, such as the dense map update interval, retained active history through chunk aging, chunk size, and especially the map resolution. These parameters influence how much data must be stored, traversed, reconstructed, and published, which is why they have a particularly strong effect on the end to end runtime.
+
+\newpage
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.00\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/Performance_map_resolution_0.06.png}
+    \caption{Runtime, CPU usage, and memory consumption of the local map generation stage when the map resolution is changed from $0.03$ to $0.06\,\mathrm{m/pixel}$.}
+    \label{fig:results-local-map-generation-map-generation-performance-tuned}
+\end{figure}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/Full_Map_zoomed_in_map_resolution_0.06.png}
+    \caption{Example local map result when the map resolution is changed from $0.03$ to $0.06\,\mathrm{m/pixel}$.}
+    \label{fig:results-local-map-generation-map-generation-map-resolution-tuned}
+\end{figure}
+
+\newpage
+
+\begin{table}[H]
+    \centering
+    \caption{Runtime summary for the local map generation stage when only the map resolution is changed to $0.06\,\mathrm{m/pixel}$.}
+    \label{tab:results-local-map-generation-map-generation-runtime-tuned}
+    \begin{tabular}{l c c c}
+        \hline
+        Function/Stage & Calls & Average runtime [ms] & Peak runtime [ms] \\
+        \hline
+        Swath buffering and accumulation into map states & 10212 & 1.647 & 7.034 \\
+        Dense map construction step & 105 & 20.636 & 85.008 \\
+        \hline
+    \end{tabular}
+\end{table}
+\noindent
+To examine the sensitivity of the implementation to parameter tuning, an additional run was performed where all parameters were kept unchanged except for the map resolution, which was increased from $0.03$ to $0.06\,\mathrm{m/pixel}$. The corresponding performance results are shown in Figure \ref{fig:results-local-map-generation-map-generation-performance-tuned} and Table \ref{tab:results-local-map-generation-map-generation-runtime-tuned}, while an example of the resulting map output is shown in Figure \ref{fig:results-local-map-generation-map-generation-map-resolution-tuned}.
+\\ \\
+This parameter change has a very strong effect on runtime. The average buffering runtime decreases from about $6.5\,\mathrm{ms}$ to about $1.6\,\mathrm{ms}$, and the average dense map construction runtime decreases from about $51\,\mathrm{ms}$ to about $20.6\,\mathrm{ms}$. The peak runtimes are also reduced substantially. This confirms that the map resolution is the single most influential parameter for the practical computational cost of the map generator. The reason is straightforward, a coarser map produces fewer cells overall, which means fewer candidate insertions, fewer active pixels, less persistent map data, less fill in work, and less memory movement when the dense image is rebuilt and published.
+\\ \\
+This reduction is especially important because the dominant cost of the full pipeline is strongly tied to data volume. Once the dense map becomes large, the system must not only compute over more pixels, but also move more memory and publish larger messages. Reducing the map resolution therefore improves performance in several ways at once. It reduces the size of the persistent states, reduces the cost of dense map construction, reduces local gap filling work, and reduces the amount of image data that must be transported through the system. In practice, this kind of reduction often gives a larger performance benefit than tuning the probabilistic thresholds alone.
+\\ \\
+At the same time, Figure \ref{fig:results-local-map-generation-map-generation-map-resolution-tuned} shows that the resulting map remains visually very similar to the default case. The main seabed features are still clearly visible, and with the naked eye the loss in quality is relatively small. This means that moderate downscaling of the map resolution can be a very effective practical choice when compute resources are limited. For later feature extraction, such a map can still remain fully useful even though it no longer matches the raw sonar sample spacing exactly.
+\\ \\
+This does not mean that the map resolution can be reduced arbitrarily. If it is downscaled too aggressively, for example by an order of magnitude or more, then useful spatial detail will eventually be compressed away and the map may lose information important for later feature extraction and matching. Thus, the map resolution should be understood as a tuning parameter that balances computational cost against retained spatial detail.
+\\ \\
+In the present work, the default resolution of $0.03\,\mathrm{m/pixel}$ was kept because it already runs in real time on the target embedded platform while preserving more detail. The additional $0.06\,\mathrm{m/pixel}$ experiment is therefore not introduced because the default setting was insufficient, but rather to illustrate how strongly performance can be improved when needed by changing a single parameter. This also demonstrates that the implemented map generation stage is flexible and can be adapted relatively easily to different vehicles and compute budgets. For lower end embedded systems, meaningful runtime reductions can be achieved simply by tuning a small set of parameters, with map resolution being the most influential of them.
 
 
 
