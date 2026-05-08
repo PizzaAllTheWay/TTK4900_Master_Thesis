@@ -1,14 +1,14 @@
 \subsection{Local Map Generation}
 \subsubsection{Overview}
-\todo[inline]{Will need to modify later when other parts are done}
-\todo[inline]{Rewrite so it also iclude feature extraction later when we have results jesjes}
-This section presents the results obtained from the local map generation stage of the pipeline. The evaluation covers both the swath processing stage and the local map generation stage, with emphasis on how the raw side scan sonar measurements are progressively transformed into cleaner and more spatially consistent intermediate representations and, ultimately, into a local map suitable for later SLAM processing.
+This section presents the results obtained from the local map generation stage of the pipeline. The evaluation covers swath processing, probabilistic local map generation, and feature extraction, with emphasis on how raw side scan sonar measurements are progressively transformed into cleaner swaths, spatially consistent reflectivity maps, and finally compact landmark representations suitable for later SLAM processing.
 \\ \\
-The results are assessed in two complementary ways. First, the intermediate and final outputs are examined qualitatively in order to evaluate whether the implemented methods produce physically meaningful swaths, candidate map support, and local reflectivity maps. Second, the computational performance is evaluated quantitatively through runtime, CPU usage, and memory consumption in order to determine whether the full processing chain remains lightweight enough for real-time deployment on embedded robotic platforms.
+The local map is an important intermediate representation, but it is not efficient to use the full dense map directly for repeated data association. As the mission grows, dense map comparison becomes increasingly expensive, and much of the image data contains background texture that is not useful for identifying repeatable landmarks. For this reason, the feature extraction stage compresses the relevant map information into a sparse set of landmarks with associated measurements, uncertainties, descriptors, and probabilistic characteristics. These landmarks form a compact global feature database, or sparse landmark map, that can be searched much faster than the full reflectivity map when proposing candidate matches or loop closures.
 \\ \\
-For the swath processing stage, the results focus on geometric correction, blind zone removal, intensity normalization, and the corresponding runtime behavior. For the map generation stage, the results focus on the effect of probabilistic pruning, the construction of the persistent map states, the final normalized local map, the influence of the fast gap filling stage, and the computational cost of the complete mapping pipeline.
+The results are assessed in two complementary ways. First, the intermediate and final outputs are examined qualitatively in order to evaluate whether the implemented methods produce physically meaningful swaths, candidate map support, local reflectivity maps, and landmark detections. Second, the computational performance is evaluated quantitatively through runtime, CPU usage, and memory consumption in order to determine whether the full processing chain remains lightweight enough for real-time deployment on embedded robotic platforms.
 \\ \\
-It is important to note that the interpretation of the map generation results depends strongly on the quality of the underlying state estimate and on the availability of aiding measurements. When aiding measurements are available, the local maps are expected to remain spatially consistent and visually coherent. During periods of dead reckoning, however, accumulated estimator drift can gradually degrade the map quality, and when aiding measurements return, the corresponding estimator correction can introduce visible distortions in the accumulated map. The following subsections therefore evaluate not only the algorithm itself, but also how its practical output is influenced by the estimator conditions under which it operates.
+For the swath processing stage, the results focus on geometric correction, blind zone removal, intensity normalization, and the corresponding runtime behavior. For the map generation stage, the results focus on probabilistic pruning, persistent map state construction, normalized local map reconstruction, fast gap filling, and computational cost. For the feature extraction stage, the results focus on landmark segmentation, descriptor generation, height estimation, and the runtime impact of these operations.
+\\ \\
+It is important to note that the interpretation of the map generation and feature extraction results depends strongly on the quality of the underlying state estimate and on the availability of aiding measurements. When aiding measurements are available, the local maps are expected to remain spatially consistent and visually coherent, which also improves landmark stability. During periods of dead reckoning, accumulated estimator drift can gradually degrade map quality and reduce the reliability of extracted features. When aiding measurements return, estimator correction can also introduce visible distortions in the accumulated map. The following subsections therefore evaluate not only the algorithms themselves, but also how their practical output is influenced by the estimator conditions under which they operate.
 
 
 
@@ -17,7 +17,7 @@ It is important to note that the interpretation of the map generation results de
 
 
 \subsubsection{Parameters}
-The main tuning parameters used in the local map generation experiments are summarized in Table \ref{tab:local-map-generation-parameters}. Only the parameters most relevant to the behavior, quality, and computational cost of the implemented methods are included here. Configuration values related mainly to hardware specific mounting geometry or programmer facing implementation details are omitted, since they are less important for interpreting the algorithmic results.
+The main tuning parameters used in the local map generation experiments are summarized in Table \ref{tab:local-map-generation-parameters}. Only the parameters most relevant to the behavior, quality, and computational cost of the implemented methods are included here. Configuration values related mainly to sensor mounting geometry, ROS2 communication, frame alignment, or programmer facing implementation details are omitted, since they are less important for interpreting the algorithmic results.
 \begin{table}[H]
     \centering
     \caption{Main parameters used in the local map generation experiments.}
@@ -26,9 +26,14 @@ The main tuning parameters used in the local map generation experiments are summ
         \hline
         Parameter & Value \\
         \hline
+
+        \multicolumn{2}{l}{\textbf{Swath processing}} \\
         Illumination EMA period & 200 \\
         Port blind zone scale & 0.45 \\
         Starboard blind zone scale & 0.35 \\
+        \\[-0.6em]
+
+        \multicolumn{2}{l}{\textbf{Map generation}} \\
         Dense map update interval & 100 swaths \\
         Maximum map update gap & 5.0 s \\
         Map resolution & 0.03 m/pixel \\
@@ -38,6 +43,22 @@ The main tuning parameters used in the local map generation experiments are summ
         Probabilistic pruning threshold $\varepsilon_{\mathrm{prob}}$ & 0.00187 \\
         Minimum fill neighbors & 3 \\
         Maximum fill passes & 5 \\
+        \\[-0.6em]
+
+        \multicolumn{2}{l}{\textbf{Feature extraction}} \\
+        Bilateral filter diameter & 31 pixels \\
+        Bilateral filter $\sigma_{\mathrm{color}}$ & 80.0 \\
+        Bilateral filter $\sigma_{\mathrm{space}}$ & 100.0 \\
+        Semantic local window size & 51 pixels \\
+        Semantic local offset & 3.3 \\
+        Semantic support search radius & 21 pixels \\
+        Minimum semantic support & 100 pixels \\
+        Minimum landmark area & 5000 pixels \\
+        Base range uncertainty $\sigma_r$ & 0.030 m \\
+        Base bearing uncertainty $\sigma_\theta$ & 0.400 deg \\
+        Range uncertainty scale $\alpha_r$ & 0.025 \\
+        Bearing uncertainty scale $\alpha_\theta$ & 0.005 \\
+
         \hline
     \end{tabular}
 \end{table}
@@ -46,7 +67,13 @@ The swath processing parameters consist of the illumination EMA period and the c
 \\ \\
 The map generation parameters control both map quality and computational cost. The dense map update interval and maximum update gap determine how often the dense local map is rebuilt and published. The map resolution sets the final spatial sampling of the generated map and is one of the most important parameters for both runtime and memory usage. The chunk size and maximum chunk age control the sparse chunked map representation, affecting how long old map regions are retained and how large the active map becomes in practice.
 \\ \\
-The two pruning thresholds, $\varepsilon_{\mathrm{approx}}$ and $\varepsilon_{\mathrm{prob}}$, govern how aggressively low contribution candidate cells are removed during the approximate and probabilistic pruning stages. These parameters strongly influence the tradeoff between retained map detail and computational efficiency. Finally, the gap filling parameters determine how aggressively small holes in the normalized local map are repaired, where the minimum number of valid neighbors controls how conservative the fill operation is and the number of fill passes determines how many times the local repair step is allowed to propagate.
+The two pruning thresholds, $\varepsilon_{\mathrm{approx}}$ and $\varepsilon_{\mathrm{prob}}$, govern how aggressively low contribution candidate cells are removed during the approximate and probabilistic pruning stages. These parameters strongly influence the tradeoff between retained map detail and computational efficiency. The gap filling parameters determine how aggressively small holes in the normalized local map are repaired, where the minimum number of valid neighbors controls how conservative the fill operation is and the number of fill passes determines how many times the local repair step is allowed to propagate.
+\\ \\
+The feature extraction parameters control the filtering, semantic segmentation, and final pruning of candidate landmarks. The bilateral filter parameters determine how strongly speckle noise is suppressed while preserving echo and shadow boundaries. The semantic segmentation parameters define the local intensity window, the threshold offset used to detect bright and dark candidates, and the support requirement between nearby echo and shadow regions. The minimum landmark area is used as a final size based pruning step after segmentation and labeling. This removes very small regions that are more likely to be noise, fragmented artifacts, or unstable segmentation leftovers than useful landmarks. This is especially important because the semantic method is designed to be general and robust for medium to large acoustic structures, but very small detections can still be unreliable. It is therefore safer to reject weak small candidates early than to pass unstable landmarks into data association, where incorrect matches are harder to correct later.
+\\ \\
+The landmark measurement uncertainty parameters define how much confidence is assigned to extracted landmark measurements. The base range and bearing uncertainties describe the nominal measurement noise, while the range dependent scaling factors increase the uncertainty for farther landmarks. This reflects the fact that distant features are generally less reliable due to lower resolution, weaker acoustic return, beam spreading, and larger sensitivity to pose and map errors.
+\\ \\
+Additional parameters exist in the implementation, including detailed sonar mounting geometry, transducer beam configuration, frame alignment offsets, and height estimation settings. These are important for the full software system, but are omitted from this summary to keep the results section focused on the parameters that most directly affect local map quality, feature extraction behavior, and computational performance.
 
 
 
@@ -422,14 +449,203 @@ In the present work, the default resolution of $0.03\,\mathrm{m/pixel}$ was kept
 
 
 \subsubsection{Feature Extarction}
-\todo[inline]{INTRO ADD: duscuss that the main point is to extract features and their probabilities/characteristics so that instead of using map that overime changes and is super big and slow to mathch features on a map, you create a database with ALL global features, this way when doing data association you don't need to use the whole map that is expensive you just check the weights and characteristics. if they match well then it is probable they are candidates for loop closures. this way you compress data of the map and build a database/global map of features and their probabalistic weights, and that is MUCH faster, i stead of like 2GB data to process each time you want to associate features and use the map, you use the feature probabilistic weights that are like 1MB in size and can be checked really fast and globally and pruned for loop closure candidates}
+\paragraph{Map Filtering} \mbox{}\\[0.5em] \noindent
+The first step in the feature extraction stage is to filter the normalized local map before segmentation. The purpose of this step is to reduce small scale speckle noise and unstable intensity variations while preserving the sharp transitions that define echo and shadow boundaries. This is important because the later segmentation stage depends directly on these local intensity structures.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Feature_Extraction/Filter_zoomed_out.png}
+    
+    \vspace{0.5em}
+    
+    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Feature_Extraction/Filter_zoomed_in.png}
+    \caption{Effect of edge preserving filtering on the normalized local map. The zoomed out view shows that the main map structure is preserved, while the zoomed in view shows the smoothing effect more clearly. Small speckle artifacts are reduced and local intensity transitions become smoother, while important echo and shadow boundaries remain sharp enough for later segmentation.}
+    \label{fig:results-local-map-generation-feature-extraction-filter}
+\end{figure}
 
-\todo[inline]{PARAMETERS ADD: have some dead space between table segments for each step of pipeline because this is quite a lot of parameters now lol}
+\newpage
 
-\todo[inline]{PARAMETERS ADD: explain why landmar area min exists, to prune smaller stuff. sometimes segment not perfect because we had to trade you know cant have region or boundary methods because inacurate, meanwhile ML to slow so something in between semantics, but they are not perfect sometimes they generate segments that are just artifacts of map/noise, these small artifacts we should take away. so basically semantic is good for large to mefium landmarks, but very small landmarks might sometimes be artifacts, so better be safe than sorry thats why this value is here to prune the small landmarks that could be artifacts, this way we only give DA valid lamdmark data that is robust. better be strict than sorry because correcting wrong landmarks is difficult later so best avoid as much as possible. ofc never perfect but you know.... (Maybe talk in depth on this by results, when me tioning parameter table just explain shortly and wait with long explanation until figure of labelling jesjes)}
+\noindent
+Figure \ref{fig:results-local-map-generation-feature-extraction-filter} shows the effect of the edge preserving filter. In the zoomed out view, the difference between the original and filtered map is not very large, since the main seabed structures and global intensity pattern are preserved. In the zoomed in view, however, the effect is much clearer. Small speckle artefacts are smoothed away, and local intensity transitions become more continuous, while the main feature boundaries remain visible.
+\\ \\
+This behavior is important for feature extraction. A simple Gaussian filter would also reduce speckle noise, but it would blur object boundaries and make echo-shadow transitions less distinct from the surrounding background. That would make it harder for the segmentation stage to determine where a feature starts and ends. The bilateral filter is therefore more useful here, even though it is slightly more expensive computationally, because it improves local stability without destroying the edge information needed for landmark detection.
+\\ \\
+Overall, the filtered result provides a cleaner and more stable input for semantic segmentation. The added filtering cost is justified because better preserved boundaries and reduced noise lead to more reliable candidate regions in the following stages.
 
-\todo[inline]{FEATURE EXTRACTION RESULTS: Add results here and comment images jesjes}
+\newpage
 
-\todo[inline]{FEATURE EXTRACTION PERFORMANCE: explain that the height estimation is the worst time consumer with 40percent of all runtime, Filtering at the start is 20percent of it all and semantic segmentation is also around 20percent of it all this means the rest is just 20percent of the consumption these values are very rought estimates after profiling. So jeeeeee there is space for improvement however it is real time jesjes -> explain for this reason have a disable flag if height not relevant for SLAM or other things in software pipeline this can be shut down to save on compute resources jeshes +++ FIGURE performance where estimate height is disabled.}
+\paragraph{Semantic Segmentation} \mbox{}\\[0.5em] \noindent
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\linewidth]{Pictures/Results/Local_Map_Generation/Feature_Extraction/Segmentation.png}
+    \caption{Result of semantic segmentation applied to the filtered local map. The method extracts candidate landmark regions by using the echo-shadow relationship as prior information, rather than relying only on local intensity thresholds. This allows object-like sonar structures to be separated more reliably from background texture while remaining lightweight enough for real-time processing.}
+    \label{fig:results-local-map-generation-feature-extraction-segmentation}
+\end{figure}
+\noindent
+After filtering, the local map is segmented to separate candidate landmark regions from the surrounding background. This is the first stage where acoustic features are explicitly extracted from the map. Instead of relying only on classical thresholding or edge detection, the segmentation uses the semantic echo-shadow relationship of side scan sonar imagery. Regions that contain both a bright acoustic response and nearby dark shadow support are treated as more likely landmark candidates.
+\\ \\
+Figure \ref{fig:results-local-map-generation-feature-extraction-segmentation} shows the result of this semantic segmentation stage. The method succeeds in extracting the main object-like structures while avoiding many background regions that would otherwise be difficult to reject using only intensity thresholds. This is important because the normalized map can still contain darker and brighter seabed texture that does not correspond to physical landmarks. Even adaptive thresholding can struggle in these cases, since local intensity changes may come from illumination variation, seabed texture, or shadowed objects, and these can be difficult to separate from intensity alone.
+\\ \\
+The semantic approach is therefore a useful compromise between classical image processing and full ML based segmentation. Classical methods would be faster, but are more likely to segment incorrect regions in complex sonar imagery, witch would introduce false landmarks in later DA step in SLAM. ML based methods could potentially be more accurate, but require labelled training data and significantly higher computational cost. The method used here instead applies simple prior knowledge about sonar shadows, which is general enough to work across side scan sonar maps while still remaining suitable for real-time operation on constrained hardware.
+\\ \\
+Some small artifacts remain after segmentation, which is expected as the method is not perfect. The purpose of this stage is not to produce the final landmark set directly, but to generate a meaningful candidate mask. Small noisy regions and unstable fragments are handled in the following labelling stages.
+
+\newpage
+
+\paragraph{Labelling} \mbox{}\\[0.5em] \noindent
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Feature_Extraction/Labelling.png}
+    \caption{Connected component labelling of the segmented candidate mask. Each coherent region is assigned a unique label, allowing landmark candidates to be separated and analyzed individually. Small segmented regions are pruned using a minimum area threshold, reducing weak artifacts and ensuring that only stronger and more coherent landmark candidates are passed further into the pipeline.}
+    \label{fig:results-local-map-generation-feature-extraction-labelling}
+\end{figure}
+\noindent
+After segmentation, the candidate mask is processed using connected component labelling. Each coherent segmented region is assigned a unique label, allowing the individual landmark candidates to be separated and analyzed independently. During this step, useful geometric information such as the bounding box, region area, and centroid can also be extracted directly from the labelled regions, which avoids repeating the same image scans later in the pipeline.
+\\ \\
+Figure \ref{fig:results-local-map-generation-feature-extraction-labelling} shows the labelled candidate regions after segmentation. The main object-like structures are preserved as separate components, while smaller isolated regions are removed by the minimum area threshold. This pruning is important because very small segmented blobs are often caused by residual speckle, weak texture variation, or fragmented segmentation artifacts rather than stable acoustic landmarks.
+\\ \\
+The minimum area criterion is therefore used as a conservative quality filter. Some small regions may represent real weak features, but keeping all of them would increase the number of false landmarks passed to data association. This would slow down matching and increase the risk of incorrect associations in SLAM. It is therefore preferable to reject uncertain small candidates early and only pass stronger, coherent regions further into the feature extraction pipeline.
+
+\newpage
+
+\paragraph{Landmark Measurements} \mbox{}\\[0.5em] \noindent
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Feature_Extraction/Landmark_Measurements.png}
+    \caption{Detected landmark regions and corresponding range-bearing measurements overlaid on the local reflectivity map. The vehicle pose is shown in the local map frame, and each landmark measurement connects the vehicle to the landmark centroid. The associated uncertainty increases with landmark range, giving closer landmarks higher confidence than distant landmarks.}
+    \label{fig:results-local-map-generation-feature-extraction-landmark-measurements}
+\end{figure}
+\noindent
+After labelling and pruning, each remaining landmark candidate is converted into a SLAM measurement relative to the vehicle pose in the local map. Figure \ref{fig:results-local-map-generation-feature-extraction-landmark-measurements} shows the local reflectivity map with the vehicle pose, detected landmark regions, and the corresponding range-bearing measurements overlaid. The measurement line connects the vehicle frame to each landmark centroid, while the plotted uncertainty indicates the confidence assigned to that observation.
+\\ \\
+The result illustrates the expected range dependent uncertainty behavior used by the landmark measurement model. In this local map representation, the landmarks are not observed from a single image snapshot, but from a map constructed by accumulating many sonar swaths along the vehicle trajectory. Therefore, the increased uncertainty is not mainly caused by image resolution alone. It is primarily caused by the relative measurement geometry between the current vehicle pose and the landmark. As the vehicle moves farther from a landmark, the range-bearing measurement becomes more sensitive to pose error, heading error, and viewing angle. Distant landmarks are therefore assigned larger uncertainty, while nearby landmarks are treated as more reliable for the current SLAM update.
+
+\newpage
+
+\paragraph{Landmark Height Estimation} \mbox{}\\[0.5em] \noindent
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Feature_Extraction/Estimated_Height.png}
+    \caption{Estimated landmark heights and corresponding uncertainty values. Landmarks with longer acoustic shadows generally produce larger height estimates. Landmarks with similar distance geometry can have similar uncertainty, while differences in shadow length still lead to different estimated heights.}
+    \label{fig:results-local-map-generation-feature-extraction-height}
+\end{figure}
+\noindent
+After the landmark regions have been detected, an approximate height is estimated from the associated acoustic shadow geometry. Figure \ref{fig:results-local-map-generation-feature-extraction-height} shows the estimated height values for the detected landmarks together with their corresponding uncertainty. The result follows the expected behavior, landmarks with longer acoustic shadows generally receive larger height estimates, since a taller structure blocks the sonar beam over a longer distance.
+\\ \\
+The figure also shows that landmarks at similar ground distance from the sonar swath can still receive different height estimates when their shadow lengths differ. This is consistent with the shadow based height model, where both the shadow length and the sonar to landmark geometry influence the final estimate. The uncertainty follows the same principle, it depends on the estimated height, the shadow length, and the distance geometry. Landmarks with similar viewing geometry can therefore have similar uncertainty even when their estimated heights differ.
+\\ \\
+These results should be interpreted as approximate geometric cues rather than precise object height measurements. The estimate depends on correct shadow association and on the simplified flat-ground shadow model, but it still provides useful additional structure information about the detected landmarks.
+
+\newpage
+
+\paragraph{Landmark Descriptors} \mbox{}\\[0.5em] \noindent
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Feature_Extraction/Descriptors.png}
+    \caption{PCA visualization of the landmark descriptor vectors. Each point represents one detected landmark projected from the full descriptor space into two principal components. The plot gives a qualitative view of descriptor separability, but does not show the complete high dimensional matching space. The descriptors act as compact landmark fingerprints, allowing fast candidate pruning before more expensive geometric data association is performed.}
+    \label{fig:results-local-map-generation-feature-extraction-descriptors}
+\end{figure}
+\noindent
+After landmark measurement and height estimation, each landmark is assigned a compact descriptor vector containing the most important appearance, geometric, and uncertainty related information about the landmark. Since the full descriptor is higher dimensional and difficult to visualize directly, Figure \ref{fig:results-local-map-generation-feature-extraction-descriptors} shows a two dimensional PCA (Principal Component Analysis) projection of the descriptor space. Each point represents one detected landmark descriptor, with the label corresponding to the landmark ID shown on the filtered map. The point position indicates descriptor similarity in the reduced PCA space, while the marker size represents the distance to the nearest neighbouring descriptor in the full descriptor space. Larger markers therefore indicate more unique landmarks, while smaller markers indicate landmarks that are more similar to another detected feature. Since PCA only preserves the two strongest directions of variation, the plot should be interpreted as a qualitative visualization of descriptor separability rather than the exact matching space used during data association.
+\\ \\
+The main motivation for using descriptors is computational efficiency. Directly comparing full landmark image regions, bounding boxes, or complete map patches would require comparing thousands of pixel values for each candidate match. This quickly becomes too expensive when data association must search through many landmarks and possible loop closure candidates. Instead, the descriptor compresses the landmark into a small feature vector that captures the most useful information for fast comparison. This acts like a compact fingerprint of the landmark.
+\\ \\
+This compression is not meant to replace the later geometric data association step. The descriptor is mainly used for fast candidate pruning, clearly different landmarks can be rejected quickly, while only plausible matches are passed on to more expensive and accurate association methods. This makes global lookup and loop closure proposal much faster, since the system compares compact descriptor vectors instead of large image regions. The strong descriptor terms provide appearance based discrimination, while the weak descriptor terms add supporting geometric and physical cues. Together, they provide a practical balance between compactness, distinctiveness, and real-time performance.
+
+\newpage
+
+\paragraph{Full Landmark Map} \mbox{}\\[0.5em] \noindent
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.70\linewidth]{Pictures/Results/Local_Map_Generation/Feature_Extraction/Full_Landmark_Measurements_zoomed_out.png}
+    
+    \vspace{0.5em}
+    
+    \includegraphics[width=0.70\linewidth]{Pictures/Results/Local_Map_Generation/Feature_Extraction/Full_Landmark_Measurements_zoomed_in.png}
+    \caption{Global landmark map reconstructed from landmarks extracted in multiple overlapping local maps. The zoomed out view shows the overall spatial distribution of the detected landmarks, while the zoomed in view highlights that repeated detections of the same physical structures align consistently across local maps. The figure also shows that landmark height estimates remain reasonably stable, while more uncertain observations correctly receive larger associated variance.}
+    \label{fig:results-local-map-generation-feature-extraction-full-landmark-map}
+\end{figure}
+
+\newpage
+
+\noindent
+To evaluate whether landmarks are detected consistently across time, the landmarks extracted from many overlapping local maps are projected into a common global frame and visualized together. Figure \ref{fig:results-local-map-generation-feature-extraction-full-landmark-map} shows this reconstructed global landmark map at two spatial scales. The main observation is that the same physical structures are repeatedly detected at consistent locations across multiple local maps, indicating that the feature extraction pipeline is stable and repeatable. This is especially visible in the zoomed in view, where multiple detections align well and preserve the overall spatial structure of the environment.
+\\ \\
+The figure also shows that the estimated landmark heights remain reasonably consistent across repeated detections of the same feature. Some repeated observations produce slightly different height values, but these differences are typically accompanied by larger uncertainty. This is expected, since landmarks observed from farther away or under less favorable viewing geometry are harder to estimate precisely. The associated height variance therefore increases in these cases, which correctly reflects the lower confidence in the estimate.
+\\ \\
+Overall, the result indicates that the full pipeline is able to extract stable landmark measurements and associated properties consistently across multiple local maps. This is important for SLAM in global feature matching and loop closure detection, since repeated observations of the same physical landmark should remain both spatially coherent and descriptively similar over time.
+
+\newpage
+
+\paragraph{Full Landmark Descriptors Map} \mbox{}\\[0.5em] \noindent
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Feature_Extraction/Full_Descriptors.png}
+    \caption{Global landmark descriptor map. Each landmark is shown in the global frame and colored according to its location in the PCA projected descriptor space, with labels indicating landmark IDs. Similar colors indicate landmarks with more similar descriptors, while stronger color intensity and larger marker size indicate more unique landmarks relative to their nearest neighboring descriptor. The result illustrates that the descriptor representation provides a compact and useful fingerprint for fast landmark comparison and pruning during later data association.}
+    \label{fig:results-local-map-generation-feature-extraction-full-descriptor-map}
+\end{figure}
+\noindent
+To further evaluate descriptor consistency over the full mission, the descriptor information from all extracted landmarks is projected back into the global landmark map. Figure \ref{fig:results-local-map-generation-feature-extraction-full-descriptor-map} shows this result, where each landmark is assigned a color based on its location in the PCA descriptor space and labeled with its corresponding ID. In this way, landmarks with similar descriptors receive similar colors, while more distinct landmarks appear more separated in color. The marker size and color intensity additionally reflect descriptor uniqueness, making landmarks that are more different from their nearest neighbors stand out more clearly. The result shows that the descriptors behave as intended, landmarks belonging to similar physical structures tend to cluster more closely in descriptor space, while more distinctive landmarks separate more clearly. This is important for later data association, because it allows clearly different landmarks to be rejected quickly using compact descriptor comparisons rather than expensive direct comparison of full image patches or bounding box pixel values. The descriptor therefore acts as a compressed fingerprint of each landmark, preserving the most important information needed for fast candidate pruning before more accurate but computationally heavier association methods are applied.
+
+\newpage
+
+\paragraph{Performance} \mbox{}\\[0.5em] \noindent
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.00\linewidth]{Pictures/Results/Local_Map_Generation/Feature_Extraction/Performance.png}
+    \caption{Runtime, CPU usage, and memory consumption of the feature extraction stage using the default parameter set.}
+    \label{fig:results-local-map-generation-feature-extraction-performance}
+\end{figure}
+\noindent
+Figure \ref{fig:results-local-map-generation-feature-extraction-performance} shows clear runtime spikes because feature extraction is only executed when a new full local map image is received. Between map updates, the node mainly waits for the next image. The runtime therefore follows the local map update rate rather than running as a continuous per swath process.
+\\ \\
+The peak size is mainly affected by the size of the incoming map. As discussed in the map generation results, periods with degraded aiding and increased dead reckoning drift can make the active map larger, which increases the amount of image data that must be filtered, segmented, labelled, and processed. In addition, part of the measured cost comes from transferring large image messages through the ROS2 middleware layer, not only from the feature extraction algorithm itself.
+\\ \\
+Profiling of the feature extraction function shows that height estimation is the most expensive internal stage, using roughly $40\%$ of the feature extraction runtime. This is expected because height estimation requires extra shadow processing for each landmark, including shadow thresholding, connected component analysis, candidate filtering, shadow length estimation, and geometric height calculation. The initial filtering stage and semantic segmentation stage each account for roughly $20\%$, while the remaining operations, including labelling, measurement generation, and descriptor construction, account for the final $20\%$.
+\\ \\
+To evaluate this cost, height estimation was disabled in the following run. This keeps the normal landmark detection and descriptor pipeline active, but removes the shadow based height and height uncertainty estimation.
+
+\newpage
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.70\linewidth]{Pictures/Results/Local_Map_Generation/Feature_Extraction/Full_Landmark_Measurements_NO_Height_zoomed_out.png}
+    
+    \vspace{0.5em}
+    
+    \includegraphics[width=0.70\linewidth]{Pictures/Results/Local_Map_Generation/Feature_Extraction/Full_Landmark_Measurements_NO_Height_zoomed_in.png}
+    \caption{Global landmark measurements reconstructed with height estimation disabled. Landmark positions and measurements are still extracted normally, but no shadow-based height values or height uncertainties are added to the landmark output.}
+    \label{fig:results-local-map-generation-feature-extraction-no-height-landmarks}
+\end{figure}
+
+\newpage
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Feature_Extraction/Full_Descriptors_NO_Height.png}
+    \caption{Global landmark descriptor map with height estimation disabled. The descriptor representation still captures the remaining appearance and geometric information, but excludes the height and height uncertainty components. Since the descriptor vector changes when these components are removed, the PCA projection also changes, and the resulting descriptor colors and spatial distribution in descriptor space are not expected to match the height enabled case directly.}
+    \label{fig:results-local-map-generation-feature-extraction-no-height-descriptors}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.00\linewidth]{Pictures/Results/Local_Map_Generation/Feature_Extraction/Performance_NO_Height.png}
+    \caption{Runtime, CPU usage, and memory consumption of the feature extraction stage with height estimation disabled. The reduction is most visible during periods where landmarks are detected, since the shadow based height estimation step is skipped.}
+    \label{fig:results-local-map-generation-feature-extraction-performance-no-height}
+\end{figure}
+
+\newpage
+
+\noindent
+Comparing the two performance plots shows that disabling height estimation reduces the runtime mainly in regions where landmarks are actually detected. Some peaks remain almost unchanged, because in those periods the map contains few or no valid landmark candidates, meaning the height estimation stage has little work to perform. In those cases, the runtime is dominated instead by the fixed image processing stages and by the size of the map being processed.
+\\ \\
+The largest difference appears in periods where several landmarks are detected, such as around the larger peaks between approximately $600$ and $800\,\mathrm{s}$, around $1000\,\mathrm{s}$, and near the end of the run. In these regions, the full pipeline must not only filter, segment, and label the map, but also estimate shadow length and height for each detected landmark. This adds a significant extra cost, and the observed reduction is consistent with the profiling result that height estimation contributes roughly $40\%$ of the feature extraction runtime when active.
+\\ \\
+However, the comparison also shows that height estimation is not always the dominant system level cost. When the local map becomes large, the main cost is still the amount of image data that must be processed and moved through memory and ROS2. Therefore, reducing map size, tuning map resolution, and limiting the active map region remain the most important performance optimizations. Once the map size is controlled, disabling height estimation can provide an additional speedup if height is not required by the later SLAM or mapping stages.
 
 
+
+
+
+
+
+\todo[inline]{EXTRA: on Feature extraction perfromance would also be nice to plot a subplot to number of landmarksdetected detected down bellow to inidcate where we detecetd landmarks jesjes. And also coment about that, ie it woudl be esier to comanet and tell what is going on to the vievwer jesjes that when landmarks + height it becomes more time consuming jesjes...}
