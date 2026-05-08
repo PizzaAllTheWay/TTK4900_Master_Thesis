@@ -1,21 +1,28 @@
 \subsection{Feature Extraction}
 \subsubsection{Landmarks}
-Once the local reflectivity map $M$ has been generated, the next step is to identify distinct and stable seafloor features that can serve as landmarks for SLAM. These landmarks correspond to repeatable acoustic structures, such as bright echo highlights or dark shadow regions that persist across consecutive local maps and provide reliable reference points for localization and data association.  
+Once the local reflectivity map $M$ has been generated, the next step is to identify distinct and stable seafloor features that can serve as landmarks for SLAM. These landmarks correspond to repeatable acoustic structures, such as bright echo highlights or dark shadow regions, that persist across consecutive local maps and provide reliable reference points for localization and data association.
 \\ \\
-The feature extraction process operates directly on the normalized reflectivity map $M$, treating it as an intensity field analogous to a grayscale image. The objective is to detect, describe, and represent acoustically distinctive regions in a compact form that can later be matched across time. This involves applying image processing methods such as edge preserving filtering, adaptive thresholding, and connected component analysis to isolate coherent acoustic responses from background texture and noise.  
+The feature extraction process operates directly on the normalized reflectivity map $M$, treating it as an intensity field analogous to a grayscale image. The objective is to detect, describe, and represent acoustically distinctive regions in a compact form that can later be matched across time. This involves applying image processing methods such as edge preserving filtering, adaptive thresholding, morphological filtering, and connected component analysis to isolate coherent acoustic responses from background texture and noise.
 \\ \\
-Each detected landmark is defined by its spatial centroid $\mathbf{p}_L = [x_L, y_L]^\top$ in the local Cartesian frame, and characterized through a descriptor summarizing its local reflectivity and texture pattern. To interface with the SLAM framework, every landmark is expressed as a measurement in polar form:
+A central purpose of feature extraction is to reduce the amount of data that must be used during data association. The dense local map contains much more information than is needed for landmark matching, and matching directly against image-like map data becomes computationally expensive as the mission grows. Instead, the map is compressed into a sparse set of landmark observations, where each landmark stores only the information required for later matching and SLAM updates.
+\\ \\
+Each extracted feature is therefore represented by a compact set of characteristics, such as position, measurement uncertainty, local intensity structure, shape, shadow information, and descriptor weights. Over time, these landmark entries form a global feature database, or sparse global landmark map, which can be searched much more efficiently than the full reflectivity map. During data association, the system can first compare landmark descriptors and probabilistic characteristics to quickly reject unlikely matches and keep only the most probable loop closure candidates. This allows the SLAM front-end to perform global matching using compact feature information rather than repeatedly processing the full map representation.
+\\ \\
+Each detected landmark is defined by its spatial centroid $\mathbf{p}_L = [x_L, y_L]^\top$ in the local Cartesian frame, and characterized through a descriptor summarizing its local reflectivity, texture, and geometric properties. To interface with the SLAM framework, every landmark is expressed as a measurement in polar form:
 $$
     \mathbf{z}^i = [z_r^i,\, z_\theta^i]^\top
 $$
-where $z_r^i$ and $z_\theta^i$ represent the range and bearing of the landmark relative to the vehicle, assumed to be positioned at the origin of the local map with its heading aligned to the $x$ axis. This provides a compact, self contained observation consistent with the range bearing model $h(\mathbf{x}, \mathbf{m}^i)$ used in SLAM. (see Equation \ref{eq:range-bearing-measurement-model})  
-\\ \\
-The goal of this stage is not only to detect features but also to define a standardized data interface for the SLAM system. The expected input is the processed reflectivity map $M$, while the outputs are a set of landmark measurements $\mathbf{z}^i$ with associated uncertainty and descriptors.  
+where $z_r^i$ and $z_\theta^i$ represent the range and bearing of the landmark relative to the vehicle, assumed to be positioned at the origin of the local map with its heading aligned to the $x$ axis. This provides a compact, self-contained observation consistent with the range bearing model $h(\mathbf{x}, \mathbf{m}^i)$ used in SLAM. (see Equation \ref{eq:range-bearing-measurement-model})
+
+\newpage
+
+\noindent
+The goal of this stage is therefore not only to detect features, but also to define a standardized and efficient data interface for the SLAM system. The expected input is the processed reflectivity map $M$, while the outputs are a set of landmark measurements $\mathbf{z}^i$ with associated uncertainty, descriptors, and probabilistic characteristics suitable for fast data association.
 \\ \\
 Subsequent sections describe the detailed image processing pipeline used for landmark detection, the computation of measurement and uncertainty, and the design of compact descriptors that enable reliable feature matching across local maps.
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.9\linewidth]{Pictures/Local_Map_Generation/Feature_Extraction/landmark_measurement_example.png}
+    \includegraphics[width=1.0\linewidth]{Pictures/Local_Map_Generation/Feature_Extraction/landmark_measurement_example.png}
     \caption{Landmark detection and conversion to range bearing formulation relative to the vehicle position at the local map origin.}
     \label{fig:local-map-generation-landmark-measurement-example}
 \end{figure}
@@ -27,17 +34,17 @@ Subsequent sections describe the detailed image processing pipeline used for lan
 
 
 \subsubsection{Landmark Detection}
-\paragraph{Image processing and detection} \mbox{}\\[0.5em] \noindent
-The detection of acoustic landmarks in the reflectivity map $M(x,y)$ follows the same principles as classical image feature extraction. The map can be viewed as a grayscale image, where each pixel intensity represents the local acoustic reflectivity of the seafloor. Hence, identifying landmarks becomes a problem of detecting distinctive regions that stand out in brightness or darkness relative to their surroundings.  
+\paragraph{Image Processing and Detection} \mbox{}\\[0.5em] \noindent
+The detection of acoustic landmarks in the reflectivity map $M(x,y)$ follows the same general principles as classical image feature extraction. The map can be viewed as a grayscale image, where each pixel intensity represents the local acoustic reflectivity of the seafloor. Hence, identifying landmarks becomes a problem of detecting distinctive acoustic regions, such as bright echo responses and dark shadow regions, that stand out from the surrounding background.
 \\ \\
-The challenge arises from the presence of speckle noise and uneven illumination across the map, both of which can obscure genuine features. To address this, the reflectivity map is first preprocessed using an edge preserving filter to suppress high frequency noise while maintaining the important structural gradients that define echoes and shadows.  
+The challenge arises from speckle noise, uneven illumination, and the fact that sonar landmarks are not always defined by simple intensity boundaries. A useful landmark may appear as a bright reflection followed by a nearby dark acoustic shadow, and this echo--shadow structure can vary in size, shape, and strength between observations. To address this, the reflectivity map is first preprocessed using an edge preserving filter to suppress high frequency noise while maintaining the important structural gradients that define echoes and shadows.
 \\ \\
-Subsequent steps operate within a local kernel (neighborhood) around each pixel, where local intensity statistics are computed and compared against adaptive thresholds. This adaptive approach makes the detector robust to varying background intensity and contrast, allowing consistent landmark detection under different seafloor textures or sonar angles.  
+Subsequent segmentation is performed using a lightweight semantic region based approach rather than relying only on classical edge or threshold detection. The detector uses simple prior knowledge about side scan sonar imagery, mainly that object-like structures often appear as a local bright peak together with an associated dark shadow. This provides a more robust cue than treating bright and dark regions independently, while still remaining much faster and simpler than full ML based segmentation methods.
 \\ \\
 Finally, standard image processing tools, such as morphological filtering and connected component analysis, are used to remove spurious responses and cluster neighboring detections into coherent regions. The centroids of these regions define the landmark coordinates in the local map frame, serving as reliable acoustic features for subsequent SLAM processing.
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.6\linewidth]{Pictures/Local_Map_Generation/Feature_Extraction/kernal_operation.png}
+    \includegraphics[width=0.5\linewidth]{Pictures/Local_Map_Generation/Feature_Extraction/kernal_operation.png}
     \caption{Illustration of a kernel based filtering operation. Each output pixel is computed as the weighted sum of neighboring pixels within the kernel window. Shown here is a $3 \times 3$ Gaussian filter with $\sigma = 1$, demonstrating the basic principle of convolution based image processing. The concept of applying a local kernel window is fundamental in image processing and is used extensively throughout this chapter for filtering, statistical analysis, and feature detection.\textsuperscript{\cite{kernel_operation}}}
     \label{fig:local-map-generation-kernel-operation}
 \end{figure}
@@ -89,70 +96,30 @@ The optimal kernel choice depends on the dataset and acoustic conditions. Gaussi
     \label{fig:local-map-generation-bilateral-filter}
 \end{figure}
 
-\paragraph{Local statistical analysis} \mbox{}\\[0.5em] \noindent
-After bilateral filtering, each pixel in the filtered map $M_s(x,y)$ is analyzed within a local neighborhood window $\mathcal{N}(x,y)$ of size $N \times N$. This window $N \times N$ is typically larger than the kernel used in the bilateral filter, since it aims to capture broader local intensity variations rather than fine scale noise. While the bilateral filter preserves edges and reduces speckle noise on a small spatial scale, the larger statistical window provides contextual information about the surrounding seafloor texture, enabling adaptive feature detection under varying background and illumination conditions.  
+\paragraph{Semantic Region Segmentation} \mbox{}\\[0.5em] \noindent
+After the reflectivity map has been filtered, the next step is to segment candidate landmark regions. Classical segmentation methods, such as global thresholding, adaptive thresholding, or Canny edge detection, are fast and simple, but they treat the image mostly as intensity values and boundaries. This is often not robust enough for side scan sonar data, because meaningful objects are usually expressed through a combination of bright echo responses and dark acoustic shadows rather than a single clean edge or thresholded region.
 \\ \\
-For each pixel, a square window $\mathcal{N}(x,y)$ of size $N \times N$ is centered at $(x,y)$ and moved (slid) across the entire map, similar to the convolution process used during filtering. Within this window, the local portion of the filtered map $M_s(x,y)$ is analyzed using a Gaussian-weighted mean and standard deviation:
-\begin{align*}
-    \mu_{\mathcal{N}}(x,y) &= 
-    \frac{\sum_{(i,j)\in\mathcal{N}(x,y)} G_{\sigma_\mu}(i,j)\, M_s(i,j)}
-         {\sum_{(i,j)\in\mathcal{N}(x,y)} G_{\sigma_\mu}(i,j)} \\[1em]
-    \sigma_{\mathcal{N}}(x,y) &=
-    \sqrt{
-        \frac{\sum_{(i,j)\in\mathcal{N}(x,y)} G_{\sigma_\mu}(i,j)
-        \big(M_s(i,j) - \mu_{\mathcal{N}}(x,y)\big)^2}
-        {\sum_{(i,j)\in\mathcal{N}(x,y)} G_{\sigma_\mu}(i,j)}
-    } \\[0.5em]
-    &\text{where } i,j \in [-n,n], \quad n = \frac{N-1}{2}
-\end{align*}
-Here, $N$ defines the total window size (eks, $15 \times 15$ pixels), and $n$ represents the half width of that window, determining how far the kernel extends from the central pixel in each direction.  
+The segmentation used here is therefore based on a lightweight semantic interpretation of the sonar image. The main assumption is that a possible object-like landmark should contain a local bright response together with a nearby dark shadow response. The bright region is produced by a strong acoustic return from the object or seabed structure, while the nearby dark region is the shadow formed where the sonar beam is blocked or weakened. Together, the echo and shadow give a stronger cue than either part alone, making the segmentation less sensitive to uneven illumination and weak edges.
 \\ \\
-It is important to note that this computation is performed locally within each kernel window centered on $(x,y)$, not across the entire image.  
-\\ \\
-The Gaussian weights $G_{\sigma_\mu}(i,j)$ are defined only over this local neighborhood $\mathcal{N}(x,y)$ as:
-$$
-    G_{\sigma_\mu}(i,j) =
-    \exp\!\left(-\frac{i^2 + j^2}{2\sigma_\mu^2}\right)
-$$
-Here, $\sigma_\mu$ controls how strongly neighboring pixels influence the local statistics. Pixels closer to the center of the kernel contribute more to the mean and variance, while distant pixels have exponentially less weight.
-\\ \\
-This Gaussian weighted formulation makes the adaptive thresholding process more robust to sharp transitions and boundary effects, since it smooths local estimates of $\mu_{\mathcal{N}}$ and $\sigma_{\mathcal{N}}$ without blurring the underlying feature edges. Typical configurations use $\sigma_\mu \in [3,7]$, depending on the desired level of spatial smoothing relative to the window size $N$.  
-\\ \\
-These weighted statistics effectively describe the acoustic texture of the surrounding seafloor. Regions with low $\sigma_{\mathcal{N}}$ are homogeneous and unlikely to contain distinctive features, whereas regions with high $\sigma_{\mathcal{N}}$ typically correspond to structural transitions such as object edges, echoes, or shadow boundaries. The computed $\mu_{\mathcal{N}}$ and $\sigma_{\mathcal{N}}$ fields are then used in the adaptive thresholding stage to identify locally dominant features.  
-\\ \\
-The neighborhood size $N \times N$ and weighting parameter $\sigma_\mu$ must be chosen carefully, too small a window makes the detector sensitive to noise, while too large a window may over-smooth important local contrast. In practice, window sizes between $15 \times 15$ and $31 \times 31$ pixels with $\sigma_\mu \in [3,7]$ work well for typical sonar resolutions and feature scales.
+This approach can be understood as an informed region based segmentation method. It uses simple prior knowledge about side scan sonar image formation, but does not require a fully trained ML (Machine Learning) model or a large labelled dataset. In that sense, it lies between purely classical image processing and learning based segmentation. Classical methods are very fast but may fail under complex geometry or illumination, while ML methods such as CNN (Convolutional Neural Networks) based methods can be more accurate but are slower and require significant training data. The semantic region method is a practical middle ground, where a small amount of sonar specific knowledge is used to improve robustness while keeping the computation suitable for real-time processing.
 
-\paragraph{Adaptive thresholding} \mbox{}\\[0.5em] \noindent
-Once the local mean $\mu_{\mathcal{N}}(x,y)$ and standard deviation $\sigma_{\mathcal{N}}(x,y)$ have been computed, each pixel is classified based on how much its intensity deviates from the local background. A pixel is marked as a potential feature if its absolute deviation exceeds an adaptive, locally scaled threshold:
-$$
-    |M_s(x,y) - \mu_{\mathcal{N}}(x,y)| > k\,\sigma_{\mathcal{N}}(x,y)
-$$
-where $k$ is a sensitivity factor that determines how strong a deviation must be to qualify as a landmark candidate.  
+\newpage
+
+\noindent
+It is also important that the semantic assumptions are not made too strict. If the detector relies on very specific object shapes, sizes, or intensity patterns, it may work well only for one dataset or one environment, but fail when the sonar angle, altitude, seabed type, or object geometry changes. For this reason, the semantic rule is kept deliberately simple and general. The echo-shadow relationship is used because it is a fundamental property of side scan sonar image formation, rather than a dataset specific pattern. This gives the method useful prior information while still allowing it to generalize across different sonar scenes.
 \\ \\
-This condition is applied independently to every pixel, producing a binary mask of the same size as the reflectivity map. Pixels that satisfy the inequality are marked as \textit{``TRUE (1)''}, and all others as \textit{``FALSE (0)''}. This effectively highlights areas whose intensity differs significantly from their local background, adapting dynamically to local contrast and texture variations.  
-\\ \\
-Positive deviations ($M_s(x,y) > \mu_{\mathcal{N}}$) indicate bright \textit{echo landmarks}, typically caused by strong reflections or elevated objects.  
-\\ \\
-Negative deviations ($M_s(x,y) < \mu_{\mathcal{N}}$) reveal dark \textit{shadow landmarks}, which correspond to acoustic occlusions or surface depressions.  
-\\ \\
-This adaptive thresholding approach ensures that the detector remains robust under varying illumination, noise, and seafloor reflectivity.  
-Unlike global methods such as \textit{``Otsus method''}, which compute a single global threshold for the entire image, this local approach adapts to spatially varying conditions, witch is crucial for sonar imagery, where intensity levels can change drastically between regions due to grazing angle, texture, and attenuation effects.  
-\\ \\
-Intuitively, if a region has a high local mean $\mu_{\mathcal{N}}$ (bright background), only much brighter or darker spots are selected, preventing false detections in already bright areas. Conversely, in darker or smoother regions, even small local deviations may pass the threshold, allowing subtle yet meaningful features to be detected.  
-\\ \\
-The constant $k$ is tuned empirically according to sonar noise characteristics, typically $k \in [1.5,\,3.0]$.  
-Smaller $k$ values increase sensitivity, detecting weaker features at the cost of more false positives, while larger $k$ values yield cleaner detections but may miss faint landmarks.
+The output of this stage is a binary candidate mask containing regions that are likely to correspond to physical acoustic structures. The purpose of semantic segmentation is therefore to provide a stronger and more meaningful initial candidate set for the rest of the feature extraction pipeline.
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.9\linewidth]{Pictures/Local_Map_Generation/Feature_Extraction/adaptive_threshold.jpg}
-    \caption{Comparison between global and adaptive thresholding methods. The global approach applies a single threshold across the entire image, causing poor segmentation under uneven illumination. In contrast, adaptive methods compute thresholds locally within small neighborhoods. The adaptive mean thresholding preserves most structures but introduces minor speckle artifacts, while the adaptive Gaussian thresholding provides a more robust and balanced result, maintaining clear edges and overall feature integrity.\textsuperscript{\cite{adaptive_threshold}}}
-    \label{fig:local-map-generation-adaptive-threshold}
+    \includegraphics[width=0.9\linewidth]{Pictures/Local_Map_Generation/Feature_Extraction/semantic_segmentation.jpg}
+    \caption{Example of semantic segmentation. Some objects can be separated using simple colour or intensity differences, such as yellow peppers against a green background. However, objects with similar appearance to the background, such as green peppers among green leaves, are harder to isolate using only classical thresholding methods. Semantic segmentation uses additional prior information about what the object is and how it is expected to appear, allowing these regions to be separated more reliably. A similar idea is used for side scan sonar imagery, where the echo-shadow relationship provides the semantic cue for detecting candidate landmarks.\textsuperscript{\cite{semantic_segmentation}}}
+    \label{fig:local-map-generation-semantic-segmentation}
 \end{figure}
 
 \newpage
 
 \paragraph{Morphological filtering} \mbox{}\\[0.5em] \noindent
-After adaptive thresholding, the resulting binary mask of candidate pixels typically contains isolated noisy responses and small fragmented blobs caused by residual speckle or local contrast fluctuations. To refine the detection and enforce spatial consistency, the mask is processed using morphological operations that act directly on the pixel structure of the image.
+After Segmentation, the resulting binary mask of candidate pixels typically contains isolated noisy responses and small fragmented blobs caused by residual speckle or local contrast fluctuations. To refine the detection and enforce spatial consistency, the mask is processed using morphological operations that act directly on the pixel structure of the image.
 \\ \\
 \textbf{$\ominus$ Erosion:} 
 Erosion shrinks bright (foreground) regions by eliminating boundary pixels that do not have full neighbourhood support. It effectively removes small isolated pixels, thin artefacts, and detaches weakly connected components.
@@ -297,11 +264,47 @@ Within the graph based SLAM framework, this covariance directly defines the info
 
 
 
-\subsubsection{Descriptor Assignment}
-\paragraph{Descriptor purpose} \mbox{}\\[0.5em] \noindent
-Each detected landmark must be uniquely characterized to enable consistent recognition across multiple local maps. Descriptors encode distinctive information about the landmarks local appearance and spatial structure, allowing the SLAM system to match observations taken from different viewpoints or times.  
+\subsubsection{Landmark Height Estimation}
+A landmark can be further described by estimating its physical height from the acoustic shadow it produces in the side scan sonar image. This height is not a direct sensor measurement, but an inferred geometric quantity derived from the relationship between the echo, the shadow, the vehicle altitude, and the landmark position. Such height information is useful later for landmark description, 2.5D map construction, and possible geometric correction of detected seabed structures.
 \\ \\
-Following the formulation in \textit{``Robust Imaging Sonar-based Place Recognition and Localization in Underwater Environments''} \cite{robust_descriptors}, the proposed approach employs two complementary descriptor sets. A \textit{``strong descriptor''} capturing local reflectivity and texture statistics, and a \textit{``weak descriptor''} encoding coarse geometric context. This separation claims to improves robustness. intensity based features remain stable across illumination and angle variations, while geometric terms enhance distinctiveness when consistent viewing conditions are available.  
+The principle is based on acoustic shadowing. When the sonar beam hits an elevated seabed structure, part of the beam is reflected strongly, while the area behind the structure receives less acoustic energy. In the reflectivity map, this appears as a bright echo followed by a darker shadow. The taller the structure is, the longer this shadow tends to become for a given sonar geometry. Therefore, the shadow length can be used to infer an approximate landmark height.
+\\ \\
+Let $H$ denote the vehicle altitude above the seabed, $L$ the estimated shadow length, and $D$ the horizontal ground distance from the sonar to the landmark. Assuming locally flat seabed and a simplified 2D side view geometry, the sonar, the top of the object, and the end of the shadow form similar triangles. Under this model, the landmark height $\hat{h}_L$ is approximated as:
+\begin{equation}
+    \hat{h}_L = \frac{H L}{D + L}
+    \label{eq:local-map-generation-landmark-height}
+\end{equation}
+where a longer shadow generally indicates a taller object, while a larger ground distance reduces the estimated height for the same shadow length.
+\\ \\
+The shadow length $L$ is estimated from the dark region associated with the landmark. Since sonar imagery contains speckle noise, uneven illumination, and unrelated dark regions, the shadow must be selected using local geometric and intensity consistency. Candidate shadow regions are identified as dark connected components near the landmark and filtered according to their relative size and spatial proximity. The selected shadow extent is then converted from image units to physical length using the local map resolution.
+\\ \\
+The resulting height estimate is assigned an uncertainty because it is derived from indirect image geometry rather than measured directly. A simple uncertainty model is:
+\begin{equation}
+    \sigma_{h_L}
+    =
+    \alpha_h
+    |\hat{h}_L|
+    \left(1 + \frac{1}{L}\right)
+    \left(1 + \frac{D}{H}\right)
+    \label{eq:local-map-generation-landmark-height-uncertainty}
+\end{equation}
+where $\alpha_h$ is a tunable confidence factor. This expression increases the uncertainty for large estimated heights, short shadows, and long-range or low-altitude viewing geometries, since these cases are more sensitive to segmentation errors and geometric assumptions.
+\\ \\
+The estimated height should therefore be interpreted as an approximate geometric reconstruction rather than a precise object measurement. The model assumes locally flat seabed, correct shadow association, stable pose and altitude estimates, and a simplified sonar projection geometry. Errors may arise from seabed slope, seabed roughness, grazing angle variation, acoustic distortion, map resolution, and incorrect shadow selection.
+
+
+
+\newpage
+
+
+
+\subsubsection{Descriptor Assignment}
+\paragraph{Descriptor Purpose} \mbox{}\\[0.5em] \noindent
+Each detected landmark must be represented in a compact and distinctive form so that it can be recognized again in later local maps. Directly comparing full reflectivity maps during data association is computationally expensive and inefficient, since most of the map contains background texture or information that is not useful for landmark matching. Instead, each landmark is compressed into a descriptor, which acts as a compact fingerprint of the feature.
+\\ \\
+A descriptor stores the most relevant characteristics of the landmark, such as its local intensity structure, texture, shape, position, and geometric properties. This allows data association to compare landmarks using small feature vectors rather than large image regions. Since landmark lookup and comparison may be performed many times during DA in SLAM, this compact representation is essential for fast candidate search, pruning, and loop closure detection.
+\\ \\
+Following the formulation in \textit{``Robust Imaging Sonar-based Place Recognition and Localization in Underwater Environments''} \cite{robust_descriptors}, the descriptor is divided into two complementary parts. The \textit{``strong descriptor''} captures local reflectivity and texture statistics, while the \textit{``weak descriptor''} captures coarse geometric and spatial information. This separation improves robustness by allowing appearance based information to drive the main matching process, while geometric information provides additional support for rejecting unlikely correspondences. 
 
 \paragraph{Strong descriptors} \mbox{}\\[0.5em] \noindent
 The strong descriptor represents the intrinsic appearance of the landmark region $\mathcal{R}_L$ using local intensity statistics and texture measures:  
@@ -377,44 +380,39 @@ This metric complements the contrast and variance features by encoding local str
 \newpage
 
 \paragraph{Weak descriptors} \mbox{}\\[0.5em] \noindent
-The weak descriptor provides complementary geometric cues that describe the landmarks spatial configuration relative to the sonar frame:  
+The weak descriptor provides complementary geometric and low-level image cues that describe the landmark relative to the sonar frame:
 \begin{equation}
-    \mathbf{d}_L^{\text{weak}} = [\, A_L,\, \rho_L,\, \theta_L,\, \Delta_r \,]
+    \mathbf{d}_L^{\text{weak}} =
+    [\, A_L,\, \rho_L,\, \theta_L,\, \hat{h}_L,\, \sigma_{h_L},\, \bar{G}_L \,]
     \label{eq:local-map-generation-descriptors-weak}
 \end{equation}
-Each component in the weak descriptor captures a geometric or spatial characteristic of the landmark relative to the sonar frame, complementing the appearance based information encoded in the strong descriptor. The landmark area $A_L$ is computed directly from the number of pixels in the region as $A_L = N_L = |\mathcal{R}_L|$, providing a simple measure of the features spatial extent in the local map. 
+where $A_L$ is the landmark area, $(\rho_L,\theta_L)$ is the range-bearing measurement from Equation \ref{eq:local-map-generation-landmark-measurement}, $\hat{h}_L$ is the estimated landmark height from Equation \ref{eq:local-map-generation-landmark-height}, $\sigma_{h_L}$ is the corresponding height uncertainty from Equation \ref{eq:local-map-generation-landmark-height-uncertainty}, and $\bar{G}_L$ is the average internal gradient magnitude of the landmark region.
 \\ \\
-The polar coordinates $(\rho_L, \theta_L)$ correspond to the range and bearing of the landmark (Equation \ref{eq:local-map-generation-landmark-measurement}), linking its geometric position to the vehicle centered reference frame.
-\\ \\  
-To compute the radial intensity gradient $\Delta_r$, the region $\mathcal{R}_L$ is divided into two radial subsets relative to the sonar origin, ie map origin $M(0, 0)$. This will create an \textit{``inner''} half $\mathcal{R}_L^{\text{in}}$ and an \textit{``outer''} half $\mathcal{R}_L^{\text{out}}$. This division is based on the average radial distance of each pixel, where $r = \sqrt{x^2 + y^2}$. Pixels with smaller $r$ radius (closer to the sonar) belong to the inner set $\mathcal{R}_L^{\text{in}}$, while those with larger $r$ radius belong to the outer set $\mathcal{R}_L^{\text{out}}$:
-$$
-    \mathcal{R}_L^{\text{in}} = \{(x,y)\in\mathcal{R}_L \mid r < r_{\text{median}}\},
-    \qquad
-    \mathcal{R}_L^{\text{out}} = \{(x,y)\in\mathcal{R}_L \mid r \geq r_{\text{median}}\}
-$$
-For each subset, the mean reflectivity is computed as:
-$$
-    \mu_I^{\text{in}} = \frac{1}{N_{\text{in}}} 
-    \sum_{(x,y)\in\mathcal{R}_L^{\text{in}}} M(x,y),
-    \qquad
-    \mu_I^{\text{out}} = \frac{1}{N_{\text{out}}} 
-    \sum_{(x,y)\in\mathcal{R}_L^{\text{out}}} M(x,y)
-$$
-and the corresponding mean radius:
-$$
-    r_{\text{in}} = \frac{1}{N_{\text{in}}} 
-    \sum_{(x,y)\in\mathcal{R}_L^{\text{in}}} r,
-    \qquad
-    r_{\text{out}} = \frac{1}{N_{\text{out}}} 
-    \sum_{(x,y)\in\mathcal{R}_L^{\text{out}}} r
-$$
-The radial intensity gradient is then approximated by a simple finite difference:
-$$
-    \Delta_r = \frac{\mu_I^{\text{out}} - \mu_I^{\text{in}}}{r_{\text{out}} - r_{\text{in}}}
-$$
-This quantity expresses how the mean reflectivity of the landmark changes with increasing range. A negative $\Delta_r$ indicates that intensity decreases with distance (typical for shadow regions), a positive $\Delta_r$ indicates increasing brightness (as in echo highlights), and values near zero correspond to uniform regions with little depth dependent variation.
+The landmark area is computed directly from the number of pixels in the connected region:
+\begin{equation}
+    A_L = N_L = |\mathcal{R}_L|
+\end{equation}
+providing a simple measure of the spatial extent of the detected feature. The polar coordinates $(\rho_L,\theta_L)$ describe the landmark position relative to the vehicle-centered sonar frame, while the estimated height adds a coarse geometric property of the detected structure. Height is included as a weak descriptor because it can be relatively consistent for the same physical object, but it is inferred indirectly from shadow geometry and is therefore less reliable than direct image measurements.
 \\ \\
-Note that computing the radial intensity gradient is relatively expensive compared to its descriptive value one gets out of it. If real-time performance is a concern, $\Delta_r$ can be omitted from the weak descriptor set.
+The final weak descriptor component, $\bar{G}_L$, measures the average strength of local intensity transitions inside the landmark region. First, Sobel derivatives are computed in the horizontal and vertical image directions:
+\begin{equation}
+    G_x = \frac{\partial M_s}{\partial x},
+    \qquad
+    G_y = \frac{\partial M_s}{\partial y}
+\end{equation}
+For each pixel inside the landmark region $\mathcal{R}_L$, the gradient magnitude is then computed as:
+\begin{equation}
+    G(x,y) = \sqrt{G_x(x,y)^2 + G_y(x,y)^2}
+\end{equation}
+The descriptor value is the average gradient magnitude over all landmark pixels:
+\begin{equation}
+    \bar{G}_L =
+    \frac{1}{N_L}
+    \sum_{(x,y)\in\mathcal{R}_L}
+    G(x,y)
+    \label{eq:local-map-generation-gradient-descriptor}
+\end{equation}
+This gives a compact measure of how strong the internal edges and intensity transitions are within the landmark. Smooth regions produce low gradient values, while structured regions with strong echo-shadow transitions produce higher values.
 
 \newpage
 

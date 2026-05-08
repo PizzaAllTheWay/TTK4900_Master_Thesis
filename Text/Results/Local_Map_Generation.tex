@@ -422,4 +422,14 @@ In the present work, the default resolution of $0.03\,\mathrm{m/pixel}$ was kept
 
 
 \subsubsection{Feature Extarction}
-\todo[inline]{Will need to modify later when other parts are done}
+\todo[inline]{INTRO ADD: duscuss that the main point is to extract features and their probabilities/characteristics so that instead of using map that overime changes and is super big and slow to mathch features on a map, you create a database with ALL global features, this way when doing data association you don't need to use the whole map that is expensive you just check the weights and characteristics. if they match well then it is probable they are candidates for loop closures. this way you compress data of the map and build a database/global map of features and their probabalistic weights, and that is MUCH faster, i stead of like 2GB data to process each time you want to associate features and use the map, you use the feature probabilistic weights that are like 1MB in size and can be checked really fast and globally and pruned for loop closure candidates}
+
+\todo[inline]{PARAMETERS ADD: have some dead space between table segments for each step of pipeline because this is quite a lot of parameters now lol}
+
+\todo[inline]{PARAMETERS ADD: explain why landmar area min exists, to prune smaller stuff. sometimes segment not perfect because we had to trade you know cant have region or boundary methods because inacurate, meanwhile ML to slow so something in between semantics, but they are not perfect sometimes they generate segments that are just artifacts of map/noise, these small artifacts we should take away. so basically semantic is good for large to mefium landmarks, but very small landmarks might sometimes be artifacts, so better be safe than sorry thats why this value is here to prune the small landmarks that could be artifacts, this way we only give DA valid lamdmark data that is robust. better be strict than sorry because correcting wrong landmarks is difficult later so best avoid as much as possible. ofc never perfect but you know.... (Maybe talk in depth on this by results, when me tioning parameter table just explain shortly and wait with long explanation until figure of labelling jesjes)}
+
+\todo[inline]{FEATURE EXTRACTION RESULTS: Add results here and comment images jesjes}
+
+\todo[inline]{FEATURE EXTRACTION PERFORMANCE: explain that the height estimation is the worst time consumer with 40percent of all runtime, Filtering at the start is 20percent of it all and semantic segmentation is also around 20percent of it all this means the rest is just 20percent of the consumption these values are very rought estimates after profiling. So jeeeeee there is space for improvement however it is real time jesjes -> explain for this reason have a disable flag if height not relevant for SLAM or other things in software pipeline this can be shut down to save on compute resources jeshes +++ FIGURE performance where estimate height is disabled.}
+
+
