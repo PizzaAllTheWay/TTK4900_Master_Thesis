@@ -638,14 +638,6 @@ To evaluate this cost, height estimation was disabled in the following run. This
 \noindent
 Comparing the two performance plots shows that disabling height estimation reduces the runtime mainly in regions where landmarks are actually detected. Some peaks remain almost unchanged, because in those periods the map contains few or no valid landmark candidates, meaning the height estimation stage has little work to perform. In those cases, the runtime is dominated instead by the fixed image processing stages and by the size of the map being processed.
 \\ \\
-The largest difference appears in periods where several landmarks are detected, such as around the larger peaks between approximately $600$ and $800\,\mathrm{s}$, around $1000\,\mathrm{s}$, and near the end of the run. In these regions, the full pipeline must not only filter, segment, and label the map, but also estimate shadow length and height for each detected landmark. This adds a significant extra cost, and the observed reduction is consistent with the profiling result that height estimation contributes roughly $40\%$ of the feature extraction runtime when active.
+The largest differences occur during periods with several detected landmarks, especially around $300$--$350,\mathrm{s}$, $600$--$800,\mathrm{s}$, $1000$--$1050,\mathrm{s}$, and near the end of the run at approximately $1400$--$1450,\mathrm{s}$. In these regions, the full pipeline must not only filter, segment, and label the map, but also estimate shadow length and height for each detected landmark. This adds a significant extra cost, and the observed reduction is consistent with the profiling result that height estimation contributes roughly $40\%$ of the feature extraction runtime when active.
 \\ \\
 However, the comparison also shows that height estimation is not always the dominant system level cost. When the local map becomes large, the main cost is still the amount of image data that must be processed and moved through memory and ROS2. Therefore, reducing map size, tuning map resolution, and limiting the active map region remain the most important performance optimizations. Once the map size is controlled, disabling height estimation can provide an additional speedup if height is not required by the later SLAM or mapping stages.
-
-
-
-
-
-
-
-\todo[inline]{EXTRA: on Feature extraction perfromance would also be nice to plot a subplot to number of landmarksdetected detected down bellow to inidcate where we detecetd landmarks jesjes. And also coment about that, ie it woudl be esier to comanet and tell what is going on to the vievwer jesjes that when landmarks + height it becomes more time consuming jesjes...}
