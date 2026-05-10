@@ -1,14 +1,18 @@
 \subsection{Local Map Generation}
 \subsubsection{Overview}
-This section presents the results obtained from the local map generation stage of the pipeline. The evaluation covers swath processing, probabilistic local map generation, and feature extraction, with emphasis on how raw side scan sonar measurements are progressively transformed into cleaner swaths, spatially consistent reflectivity maps, and finally compact landmark representations suitable for later SLAM processing.
+The main question in this section is whether raw side scan sonar data can be transformed into stable local maps and reliable landmark measurements for later SLAM use. This is important because the SLAM back-end does not operate directly on raw sonar returns. It depends on the data-processing pipeline to produce geometrically consistent maps, extract repeatable landmarks, and assign measurements, uncertainties, and descriptors that are useful for data association and loop closure.
 \\ \\
-The local map is an important intermediate representation, but it is not efficient to use the full dense map directly for repeated data association. As the mission grows, dense map comparison becomes increasingly expensive, and much of the image data contains background texture that is not useful for identifying repeatable landmarks. For this reason, the feature extraction stage compresses the relevant map information into a sparse set of landmarks with associated measurements, uncertainties, descriptors, and probabilistic characteristics. These landmarks form a compact global feature database, or sparse landmark map, that can be searched much faster than the full reflectivity map when proposing candidate matches or loop closures.
+This section presents the results obtained from the local map generation stage of the pipeline. The evaluation covers swath processing, probabilistic local map generation, and feature extraction. Together, these stages progressively transform raw side scan sonar measurements into corrected swaths, spatially consistent reflectivity maps, and finally compact landmark representations suitable for SLAM.
 \\ \\
-The results are assessed in two complementary ways. First, the intermediate and final outputs are examined qualitatively in order to evaluate whether the implemented methods produce physically meaningful swaths, candidate map support, local reflectivity maps, and landmark detections. Second, the computational performance is evaluated quantitatively through runtime, CPU usage, and memory consumption in order to determine whether the full processing chain remains lightweight enough for real-time deployment on embedded robotic platforms.
+The local map is an important intermediate representation, but it is not efficient to use the full dense map directly for repeated data association. As the mission grows, dense map comparison becomes increasingly expensive, and much of the image data contains background texture that is not useful for identifying repeatable landmarks. For this reason, the feature extraction stage compresses the useful map information into a sparse set of landmarks with associated measurements, uncertainties, descriptors, and probabilistic characteristics. These landmarks form a compact feature database that can be searched much faster than the full reflectivity map when proposing candidate matches or loop closures.
 \\ \\
-For the swath processing stage, the results focus on geometric correction, blind zone removal, intensity normalization, and the corresponding runtime behavior. For the map generation stage, the results focus on probabilistic pruning, persistent map state construction, normalized local map reconstruction, fast gap filling, and computational cost. For the feature extraction stage, the results focus on landmark segmentation, descriptor generation, height estimation, and the runtime impact of these operations.
+The local map generation results are used to evaluate both the quality of the produced map data and the cost of producing it. The first part of the evaluation follows the data through the processing chain and checks whether each stage produces the expected output, corrected swaths after geometric correction and blind zone removal, meaningful candidate support after pruning, stable local reflectivity maps after accumulation and normalization, and repeatable landmark detections after feature extraction. These qualitative results show whether the output is suitable for later SLAM use.
 \\ \\
-It is important to note that the interpretation of the map generation and feature extraction results depends strongly on the quality of the underlying state estimate and on the availability of aiding measurements. When aiding measurements are available, the local maps are expected to remain spatially consistent and visually coherent, which also improves landmark stability. During periods of dead reckoning, accumulated estimator drift can gradually degrade map quality and reduce the reliability of extracted features. When aiding measurements return, estimator correction can also introduce visible distortions in the accumulated map. The following subsections therefore evaluate not only the algorithms themselves, but also how their practical output is influenced by the estimator conditions under which they operate.
+The second part evaluates the computational cost of the individual local map generation stages. Runtime, CPU usage, and memory consumption are measured for swath processing, map generation, and feature extraction separately. These measurements are not meant to replace the complete pipeline schedulability analysis later in the chapter, but to show where the main isolated costs come from and how different parameters affect each stage.
+\\ \\
+For the swath processing stage, the results focus on geometric correction, blind zone removal, intensity normalization, and runtime behavior. For the map generation stage, the results focus on probabilistic pruning, persistent map state construction, normalized local map reconstruction, fast gap filling, and computational cost. For the feature extraction stage, the results focus on landmark segmentation, descriptor generation, landmark measurement quality, optional height estimation, and the runtime impact of these operations.
+\\ \\
+It is important to note that map generation and feature extraction depend strongly on the quality of the underlying state estimate. When aiding measurements are available, the local maps are expected to remain spatially consistent and visually coherent, which also improves landmark stability. During dead reckoning periods, accumulated estimator drift can gradually degrade map quality and reduce the reliability of extracted features. The following subsections therefore evaluate not only the individual algorithms, but also whether their combined output is accurate, useful for SLAM, and practical for real-time embedded deployment.
 
 
 
@@ -160,15 +164,15 @@ Compared with a more computationally expensive smoothing based illumination esti
 \paragraph{Pruning stage} \mbox{}\\[0.5em] \noindent
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/Q_m_pruned_1_zoomed_out.png}
+    \includegraphics[width=0.93\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/Q_m_pruned_1_zoomed_out.png}
     
     \vspace{0.01em}
     
-    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/Q_m_pruned_2_zoomed_out.png}
+    \includegraphics[width=0.93\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/Q_m_pruned_2_zoomed_out.png}
     
     \vspace{0.01em}
     
-    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/Q_m_pruned_3_zoomed_out.png}
+    \includegraphics[width=0.93\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/Q_m_pruned_3_zoomed_out.png}
     \caption{Effect of the two pruning stages on the candidate measurement set $Q_m$ shown at full spatial scale for one selected swath. The top image shows the initial candidate set after geometric footprint generation, the middle image shows the result after the fast approximate pruning stage, and the bottom image shows the final result after the probabilistic pruning stage.}
     \label{fig:results-local-map-generation-map-generation-pruning-zoomed-out}
 \end{figure}
@@ -232,15 +236,15 @@ This difference between $P_m$ and $V_m$ is important, since they represent two d
 \paragraph{Persistent states $P$ and $V$} \mbox{}\\[0.5em] \noindent
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/V_and_P_1.png}
+    \includegraphics[width=0.93\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/V_and_P_1.png}
     
     \vspace{0.01em}
     
-    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/V_and_P_2.png}
+    \includegraphics[width=0.93\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/V_and_P_2.png}
     
     \vspace{0.01em}
     
-    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/V_and_P_3.png}
+    \includegraphics[width=0.93\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/V_and_P_3.png}
     \caption{Evolution of the persistent map states $V$ and $P$ over time. The gray grid indicates the active chunk structure used to store the accumulated local map states.}
     \label{fig:results-local-map-generation-map-generation-persistent-states}
 \end{figure}
@@ -265,16 +269,16 @@ A final observation from these figures is that the persistent states $P$ and $V$
 \paragraph{Normalized map construction $M$} \mbox{}\\[0.5em] \noindent
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.80\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/M_1.png}
+    \includegraphics[width=0.75\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/M_1.png}
     \caption{Normalized local map $M$ at the first selected time instant.}
     \label{fig:results-local-map-generation-map-generation-normalized-map-1}
 \end{figure}
 
-\vspace{-0.8em}
+\vspace{-1.0em}
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.80\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/M_2.png}
+    \includegraphics[width=0.75\linewidth]{Pictures/Results/Local_Map_Generation/Map_Generation/M_2.png}
     \caption{Normalized local map $M$ at the second selected time instant.}
     \label{fig:results-local-map-generation-map-generation-normalized-map-2}
 \end{figure}
@@ -510,7 +514,7 @@ The minimum area criterion is therefore used as a conservative quality filter. S
 \paragraph{Landmark Measurements} \mbox{}\\[0.5em] \noindent
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Feature_Extraction/Landmark_Measurements.png}
+    \includegraphics[width=0.60\linewidth]{Pictures/Results/Local_Map_Generation/Feature_Extraction/Landmark_Measurements.png}
     \caption{Detected landmark regions and corresponding range-bearing measurements overlaid on the local reflectivity map. The vehicle pose is shown in the local map frame, and each landmark measurement connects the vehicle to the landmark centroid. The associated uncertainty increases with landmark range, giving closer landmarks higher confidence than distant landmarks.}
     \label{fig:results-local-map-generation-feature-extraction-landmark-measurements}
 \end{figure}
@@ -524,7 +528,7 @@ The result illustrates the expected range dependent uncertainty behavior used by
 \paragraph{Landmark Height Estimation} \mbox{}\\[0.5em] \noindent
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.95\linewidth]{Pictures/Results/Local_Map_Generation/Feature_Extraction/Estimated_Height.png}
+    \includegraphics[width=0.60\linewidth]{Pictures/Results/Local_Map_Generation/Feature_Extraction/Estimated_Height.png}
     \caption{Estimated landmark heights and corresponding uncertainty values. Landmarks with longer acoustic shadows generally produce larger height estimates. Landmarks with similar distance geometry can have similar uncertainty, while differences in shadow length still lead to different estimated heights.}
     \label{fig:results-local-map-generation-feature-extraction-height}
 \end{figure}
