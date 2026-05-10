@@ -17,7 +17,8 @@
         "neighbouring",
         "Posteriori",
         "preintegrated",
-        "Preintegration"
+        "Preintegration",
+        "schedulability"
     ],
 
     "latex-workshop.latex.tools": [

@@ -1,13 +1,12 @@
 \subsection{Introduction}
-\todo[inline]{This intrduction needs to be expaneded and modified as new results and new chapters are added to teh mix}
-This chapter presents the results obtained from the complete Side Scan Sonar SLAM (SSS SLAM) pipeline developed in this thesis. The goal of this chapter is to evaluate the behavior, accuracy, and computational performance of the implemented system when applied to real datasets. The evaluation covers several components of the pipeline, including state estimation, local map generation, and the overall SLAM framework.
+This chapter presents the results obtained from the complete Side Scan Sonar SLAM (SSS SLAM) pipeline developed in this thesis. The goal is to evaluate the behaviour, output quality, and computational performance of the implemented system on real recorded datasets. The evaluation covers the main processing stages of the pipeline, including state estimation, swath processing, map generation, feature extraction, and full pipeline performance.
 \\ \\
-First, the data used for the experiments and evaluation is described, including how the datasets were gathered and prepared. The following sections then analyze the results produced by the different algorithmic components of the system. Particular focus is placed on trajectory estimation, map consistency, and the quality of generated sonar maps.
+First, the dataset used for the experiments is described, together with the hardware and software setup used during testing. The following sections then evaluate the individual algorithmic components. The state estimation results focus on trajectory behaviour, consistency, and sensor-aiding performance. The local map generation results evaluate swath processing, probabilistic map generation, map quality, and the extracted sonar features used by the later SLAM system.
 \\ \\
-In addition to algorithmic evaluation, this chapter also examines the computational performance of the system. Runtime behavior, CPU usage, and memory consumption are analyzed in order to assess whether the pipeline is suitable for real time operation on embedded robotic platforms.
+A separate performance section evaluates the complete ROS2 data-processing pipeline running together, rather than only isolated algorithms. Runtime, CPU usage, RAM usage, and schedulability are analyzed to determine whether the system can operate in real time on embedded robotic hardware. One of the most important findings is that the implemented SLAM data-processing pipeline is real-time capable on constrained hardware. The results also show that the pipeline can be tuned and scaled for even more limited embedded systems by adjusting parameters such as map resolution and feature extraction settings.
 \\ \\
 The full implementation of the SSS SLAM pipeline used in this thesis is available as open source software:
 \\ \\
 \url{https://github.com/PizzaAllTheWay/SSS_SLAM_ws} \cite{SSS_SLAM_repo}
 \\ \\
-This repository contains the full software framework, including the ROS2 packages, processing modules, and supporting tools used to generate the results presented in this chapter.
+This repository contains the ROS2 packages, processing modules, configuration files, test tools, and supporting scripts used to generate the results presented in this chapter.
