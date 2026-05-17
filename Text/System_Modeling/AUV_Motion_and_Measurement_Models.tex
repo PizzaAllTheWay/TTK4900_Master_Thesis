@@ -359,25 +359,22 @@ where $\mathbf{p}_{\text{DVL}/b}^{b}$ is the DVL position in the body frame, and
 The ideal predicted DVL measurement would then be written as:
 $$
     h_{\text{DVL,ideal}}(\mathbf{x}) =
-    \begin{bmatrix}
-        \left(R_b^{\text{DVL}}\left(R_n^b(\mathbf{q})\,\mathbf{v}_{b/O}^{n}
-        + \boldsymbol{\omega}_{b/O}^{b} \times \mathbf{p}_{\text{DVL}/b}^{b}\right)\right)_x \\
-        \left(R_b^{\text{DVL}}\left(R_n^b(\mathbf{q})\,\mathbf{v}_{b/O}^{n}
-        + \boldsymbol{\omega}_{b/O}^{b} \times \mathbf{p}_{\text{DVL}/b}^{b}\right)\right)_y
-    \end{bmatrix}
+    R_b^{\text{DVL}}
+    \left(
+        R_n^b(\mathbf{q})\,\mathbf{v}_{b/O}^{n}
+        +
+        \boldsymbol{\omega}_{b/O}^{b} \times \mathbf{p}_{\text{DVL}/b}^{b}
+    \right)
 $$
-However, the INS state model used in this thesis does not include the body angular velocity $\boldsymbol{\omega}_{b/O}^{b}$ as a state variable (See Equation \ref{eq:kinematics-motion-model-states} above). Therefore, the full lever arm compensation cannot be used directly without extending the state or estimating angular velocity separately. For this thesis, the DVL is assumed to be close enough to the body origin that the lever arm effect is small during normal operation. Short deviations during stronger rotations are treated as measurement disturbances and can be handled later by filtering and outlier rejection in the state estimation phase.
+However, the INS state model used in this thesis does not include the body angular velocity $\boldsymbol{\omega}_{b/O}^{b}$ as a state variable, see Equation \ref{eq:kinematics-motion-model-states}. Therefore, the full lever arm compensation cannot be used directly without extending the state or estimating angular velocity separately. For this thesis, the DVL is assumed to be close enough to the body origin that the lever arm effect is small during normal operation. Short deviations during stronger rotations are treated as measurement disturbances and can be handled later by filtering and outlier rejection in the state estimation phase.
 \\ \\
 The simplified DVL measurement model used in this work is therefore:
 \begin{equation}
     h_{\text{DVL}}(\mathbf{x}) =
-    \begin{bmatrix}
-        \left(R_b^{\text{DVL}} R_n^b(\mathbf{q})\,\mathbf{v}_{b/O}^{n}\right)_x \\
-        \left(R_b^{\text{DVL}} R_n^b(\mathbf{q})\,\mathbf{v}_{b/O}^{n}\right)_y
-    \end{bmatrix}
+    R_b^{\text{DVL}} R_n^b(\mathbf{q})\,\mathbf{v}_{b/O}^{n}
     \label{eq:aiding-measurement-model-dvl}
 \end{equation}
-where $R_b^{\text{DVL}}$ is the known rotation from body frame to DVL frame, and only the horizontal velocity components are used.
+where $R_b^{\text{DVL}}$ is the known rotation from body frame to DVL frame. The predicted measurement is therefore the estimated vehicle velocity transformed from the navigation frame, through the body frame, and into the DVL sensor frame.
 \\ \\
 The DVL measurement model is
 $$
@@ -389,12 +386,13 @@ with
     \qquad
     \mathbf{R}_{\text{DVL}} =
     \begin{bmatrix}
-        \sigma_{v_x}^2 & 0 \\
-        0 & \sigma_{v_y}^2
+        \sigma_{v_x}^2 & 0 & 0 \\
+        0 & \sigma_{v_y}^2 & 0 \\
+        0 & 0 & \sigma_{v_z}^2
     \end{bmatrix}
     \label{eq:aiding-measurement-model-dvl-noise}
 \end{equation}
-where $\sigma_{v_x}^2$ and $\sigma_{v_y}^2$ describe the DVL velocity measurement uncertainty.
+where $\sigma_{v_x}^2$, $\sigma_{v_y}^2$, and $\sigma_{v_z}^2$ describe the DVL velocity measurement uncertainty in the sensor frame.
 
 
 
