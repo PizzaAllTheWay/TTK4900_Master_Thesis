@@ -43,7 +43,7 @@ $$
 $$
 This process effectively replaces linearization and analytical Jacobian computation with a deterministic sampling of the nonlinear function. A similar procedure is applied during the measurement update step, where the sigma points are propagated through the nonlinear measurement model $h(\mathbf{x})$ to compute the predicted observation mean and covariance.
 \\ \\
-During the measurement update step, each predicted sigma point $\chi_i^-$ is passed through the nonlinear measurement model $h(\mathbf{x})$ (for example, the GNSS measurement model in Equation \ref{eq:aiding-measurement-model}) to get predicted measurement samples:
+During the measurement update step, each predicted sigma point $\chi_i^-$ is passed through the nonlinear measurement model $h(\mathbf{x})$ (for example, the GNSS measurement model in Equation \ref{eq:aiding-measurement-model-gnss}) to get predicted measurement samples:
 $$
     \mathcal{Z}_i = h(\chi_i^-)
 $$
@@ -238,7 +238,7 @@ Together, these mappings preserve the unit quaternion constraint and maintain fu
 
 
 \subsubsection{Manifold Operators for the Measurement Model}
-The measurement model in Equation~\ref{eq:aiding-measurement-model} maps the nonlinear navigation state $\mathbf{x}$ into a measurable quantity $\mathbf{z}$ composed of GNSS position and yaw. The measurement manifold therefore combines both Euclidean and circular components:
+The measurement model in Equation~\ref{eq:aiding-measurement-model-gnss} maps the nonlinear navigation state $\mathbf{x}$ into a measurable quantity $\mathbf{z}$ composed of GNSS position and yaw. The measurement manifold therefore combines both Euclidean and circular components:
 $$
     \mathbf{z} =
     \begin{bmatrix}

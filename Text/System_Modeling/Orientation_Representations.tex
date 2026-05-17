@@ -76,7 +76,7 @@ When the pitch angle approaches $\theta = \pm90^{\circ}$, the cosine term $\cos\
     \label{fig:system-modeling-gimbal-lock}
 \end{figure}
 \noindent
-Despite this limitation, Euler angles remain a practical choice for surface and marine robotics, where pitch and roll angles typically remain small. Their intuitive interpretation and computational simplicity make them well suited for real-time estimation and control near level operating conditions. In the case of an ASV, large attitude excursions are highly unlikely, as excessive roll or pitch would indicate a loss of stability or complete capsizing. Under such operational constraints, the singularity at $\theta = \pm90^{\circ}$ is never encountered, making the Euler representation both sufficient and efficient for navigation and SLAM applications.
+Despite this limitation, Euler angles remain useful in this work for logging, plotting, debugging, and result analysis, since roll, pitch, and yaw are easy to interpret directly. However, for an AUV the vehicle can experience larger and complex 3D motion, so Euler angles are not used as the main internal attitude representation. Instead, quaternions are preferred for state estimation and SLAM, since they avoid singularities and provide a more robust representation of orientation during submerged operation.
 
 
 
@@ -135,7 +135,7 @@ $$
 $$
 where $\mathbf{v}_q = [0~v_x~v_y~v_z]^T$ is the quaternion form of the vector $\mathbf{v}$. This operation applies the rotation represented by $\mathbf{q}$ to $\mathbf{v}$ in a smooth and continuous manner without encountering singularities.  
 \\ \\
-In practical applications, quaternions are widely used in estimators and sensors where singularity free orientation handling is critical. The IMU on the microAmpere ASV platform outputs attitude in quaternion form, which integrates naturally with sensor fusion algorithms such as the Error State Kalman Filter (ESKF) discussed later in the report. These algorithms rely on quaternion algebra to represent small attitude perturbations efficiently and avoid numerical instability associated with Euler angle singularities.  
+In practical applications, quaternions are widely used in estimators and sensors where singularity free orientation handling is critical. The IMU on the AUVs outputs attitude in quaternion form, which integrates naturally with sensor fusion algorithms such as the Error State Kalman Filter (ESKF) discussed later in the thesis. These algorithms rely on quaternion algebra to represent small attitude perturbations efficiently and avoid numerical instability associated with Euler angle singularities.  
 \\ \\
 The main advantages of quaternions include their smooth and continuous representation of orientation, absence of gimbal lock, and computational efficiency in rotation composition and interpolation. They maintain numerical stability under integration and are well suited for optimization and estimation algorithms. However, quaternions require one additional parameter compared to Euler angles and lack intuitive physical meaning, as their four components do not directly correspond to measurable angular quantities. Furthermore, they are less straightforward to interpret and manipulate mathematically, often requiring specialized operations such as normalization, conjugation, and noncommutative multiplication. Despite these challenges, their robustness and compatibility with modern sensor fusion and control frameworks make quaternions a preferred internal representation for real-time navigation and estimation systems.
 

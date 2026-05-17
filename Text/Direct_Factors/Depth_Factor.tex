@@ -1,0 +1,22 @@
+\subsection{Depth Factor}
+The depth factor represents a direct measurement constraint that links the estimated vehicle pose to the measured depth from the depth sensor. Since depth is normally available during most of an AUV mission, it is one of the most useful direct factors in the system. It helps constrain the vertical position of the vehicle and reduces drift in the down direction.
+\\ \\
+Unlike odometry or landmark based factors, which require preintegration or feature association, the depth factor can be constructed directly from the raw measurement with minimal preprocessing. This classifies it as a \textit{direct factor}. In the factor graph, it is implemented as a unary factor connected to the current pose node.
+\\ \\
+The depth factor can be written as:
+$$
+    \mathbf{r}_{Depth} = z_{Depth} - h(\mathbf{x})
+$$
+where $z_{Depth}$ is the measured depth, and $h(\mathbf{x})$ extracts the estimated depth from the vehicle state, as defined in measurement model Equation \ref{eq:aiding-measurement-model-depth}. The measurement noise is modeled as a zero mean Gaussian:
+$$
+    \mathbf{r}_{Depth} \sim \mathcal{N}(0, R_{Depth})
+$$
+where $R_{Depth}$ is the depth measurement variance, as defined in Equation \ref{eq:aiding-measurement-model-depth-noise}.
+\\ \\
+In the factor graph, the depth measurement contributes the residual:
+$$
+    \| z_{Depth} - h(\mathbf{x}) \|^2_{R_{Depth}^{-1}}
+$$
+This factor is added when a depth measurement is available and gives the optimizer a simple absolute constraint on the vehicle depth.
+\\ \\
+The depth factor is especially important for AUV navigation because the vehicle often operates without GNSS while submerged. While the IMU and preintegration provide relative motion, the depth sensor gives a direct and stable reference for the vertical state. This makes the estimate more stable and helps the rest of the SLAM system build maps using a better constrained vehicle pose.

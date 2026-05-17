@@ -87,7 +87,7 @@ Before defining the discrete time ESKF stages, the measurement Jacobian structur
 $$
     H = H_{\mathbf{x}} \, X_{\delta \mathbf{x}}.
 $$
-Here, $H_{\mathbf{x}}$ is the Jacobian of the measurement function with respect to the nominal state, obtained by linearizing the measurement model in Equation \ref{eq:aiding-measurement-model}. Since this measurement function provides position and yaw observations, $H_{\mathbf{x}}$ captures how small variations in the nominal position and attitude affect the predicted GNSS position and yaw outputs.  
+Here, $H_{\mathbf{x}}$ is the Jacobian of the measurement function with respect to the nominal state, obtained by linearizing the measurement model $h(\mathbf{x})$. Since this measurement function provides position and yaw observations, $H_{\mathbf{x}}$ captures how small variations in the nominal position and attitude affect the predicted GNSS position and yaw outputs.  
 \\ \\
 However, because the ESKF performs estimation in the error state domain, the measurement sensitivity must be expressed with respect to the error state $\delta\mathbf{x}$. The matrix $X_{\delta \mathbf{x}}$ provides this mapping by relating perturbations in the nominal state to those in the error state. It has a fixed block diagonal structure:
 $$
